@@ -31,6 +31,8 @@ const (
 	NoResultFoundError      = "No identities can be retrieved"
 	MutipleResultFoundError = "Get more than one results"
 	SecretsNamespace        = "cattle-global-data"
+	UserUIDScope            = "_user_uid"
+	GroupUIDScope           = "_group_uid"
 )
 
 type Config struct {

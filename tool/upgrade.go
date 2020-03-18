@@ -14,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 	ldapv2 "gopkg.in/ldap.v2"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -74,7 +75,13 @@ func Upgrade(c *Config) error {
 		objectFilter = fmt.Sprintf("(objectClass=%v)", authConfig.UserObjectClass)
 		groupFilter = fmt.Sprintf("(objectClass=%v)", authConfig.GroupObjectClass)
 		uidAttribute = authConfig.UserUniqueIDAttribute
+		if uidAttribute == "" {
+			uidAttribute = "objectGUID"
+		}
 		gidAttribute = authConfig.GroupUniqueIDAttribute
+		if gidAttribute == "" {
+			gidAttribute = "objectGUID"
+		}
 		baseDN = authConfig.UserSearchBase
 		groupSearchDN = authConfig.GroupSearchBase
 		searchAttribute = GetUserSearchAttributes(authConfig)
@@ -97,7 +104,13 @@ func Upgrade(c *Config) error {
 		objectFilter = fmt.Sprintf("(objectClass=%v)", ldapConfig.UserObjectClass)
 		groupFilter = fmt.Sprintf("(objectClass=%v)", ldapConfig.GroupObjectClass)
 		uidAttribute = ldapConfig.UserUniqueIDAttribute
+		if uidAttribute == "" {
+			uidAttribute = "entryUUID"
+		}
 		gidAttribute = ldapConfig.GroupUniqueIDAttribute
+		if gidAttribute == "" {
+			gidAttribute = "entryUUID"
+		}
 		baseDN = ldapConfig.UserSearchBase
 		groupSearchDN = ldapConfig.GroupSearchBase
 		searchAttribute = GetUserSearchAttributesForLDAP(ldapConfig)
@@ -238,6 +251,7 @@ func getLdapUserForUpdate(lConn *ldapv2.Conn, distinguishedName, filter string, 
 		if ok && ldapErr.ResultCode != ldapv2.LDAPResultNoSuchObject {
 			return nil, err
 		}
+		return nil, errors.New(NoResultFoundError)
 	}
 
 	if len(result.Entries) < 1 {
@@ -467,11 +481,20 @@ func prepareDNChangedUsers(failedUsers map[string]v3.User, preparedUsers map[str
 					logrus.Warnf("sync user %s:: find multiple users for principal %s", userID, principalID)
 					checkEntries, err := checkForGroups(userID, authConfigType, management, results)
 					if err != nil {
+						if apierrors.IsNotFound(err) {
+							logrus.Warnf("Skip for user %s with empty user group", userID)
+							manualUsers = append(manualUsers, userID)
+							continue
+						}
 						logrus.Errorf("failed to get group principals for user %s with error: %v", userID, err)
 						continue
 					}
 					if len(checkEntries) > 1 {
 						logrus.Warnf("Found multiple users with same group, need to check user %s manually", userID)
+						manualUsers = append(manualUsers, userID)
+						continue
+					} else if len(checkEntries) == 0 {
+						logrus.Warnf("No identities found, need to check user %s manually", userID)
 						manualUsers = append(manualUsers, userID)
 						continue
 					}
@@ -596,20 +619,24 @@ func checkForGroups(userID, authConfigType string, management managementv3.Inter
 		memberOf := entry.GetAttributeValues("memberOf")
 		if len(memberOf) == len(groupPrincipals) {
 			isEqual := false
-			for _, member := range memberOf {
-				memberGroup := fmt.Sprintf("%s_group://%s", authConfigType, member)
-				for _, groupPrincipal := range groupPrincipals {
-					if strings.EqualFold(memberGroup, groupPrincipal.Name) {
-						isEqual = true
+			if len(memberOf) == 0 {
+				isEqual = true
+			} else {
+				for _, member := range memberOf {
+					memberGroup := fmt.Sprintf("%s_group://%s", authConfigType, member)
+					for _, groupPrincipal := range groupPrincipals {
+						if strings.EqualFold(memberGroup, groupPrincipal.Name) {
+							isEqual = true
+							break
+						}
+					}
+					if !isEqual {
+						logrus.Infof("Skip for different memberOf=%v attribute: user=%s, account=%s, name=%s",
+							memberOf,
+							entry.DN, entry.GetAttributeValue("sAMAccountName"),
+							entry.GetAttributeValue("name"))
 						break
 					}
-				}
-				if !isEqual {
-					logrus.Infof("Skip for different memberOf=%v attribute: user=%s, account=%s, name=%s",
-						memberOf,
-						entry.DN, entry.GetAttributeValue("sAMAccountName"),
-						entry.GetAttributeValue("name"))
-					break
 				}
 			}
 			if isEqual {
