@@ -195,38 +195,38 @@ func GetUserExternalID(username string, loginDomain string) string {
 	return username
 }
 
-func GetUserSearchAttributes(config *v3.ActiveDirectoryConfig) []string {
+func GetUserSearchAttributes(config *v3.ActiveDirectoryConfig, uidAttribute string) []string {
 	userSearchAttributes := []string{
 		"memberOf",
 		config.UserLoginAttribute,
 		config.UserNameAttribute,
-		config.UserUniqueIDAttribute}
+		uidAttribute}
 	return userSearchAttributes
 }
 
-func GetGroupSearchAttributes(config *v3.ActiveDirectoryConfig) []string {
+func GetGroupSearchAttributes(config *v3.ActiveDirectoryConfig, uidAttribute string) []string {
 	groupSeachAttributes := []string{"memberOf",
 		"objectClass",
 		config.GroupObjectClass,
 		config.UserLoginAttribute,
 		config.GroupNameAttribute,
 		config.GroupSearchAttribute,
-		config.GroupUniqueIDAttribute}
+		uidAttribute}
 	return groupSeachAttributes
 }
 
-func GetUserSearchAttributesForLDAP(config *v3.LdapConfig) []string {
+func GetUserSearchAttributesForLDAP(config *v3.LdapConfig, uidAttribute string) []string {
 	userSearchAttributes := []string{"dn", config.UserMemberAttribute,
 		"objectClass",
 		config.UserObjectClass,
 		config.UserLoginAttribute,
 		config.UserNameAttribute,
 		config.UserEnabledAttribute,
-		config.UserUniqueIDAttribute}
+		uidAttribute}
 	return userSearchAttributes
 }
 
-func GetGroupSearchAttributesForLDAP(config *v3.LdapConfig) []string {
+func GetGroupSearchAttributesForLDAP(config *v3.LdapConfig, uidAttribute string) []string {
 	groupSeachAttributes := []string{config.GroupMemberUserAttribute,
 		config.GroupMemberMappingAttribute,
 		"objectClass",
@@ -234,7 +234,7 @@ func GetGroupSearchAttributesForLDAP(config *v3.LdapConfig) []string {
 		config.UserLoginAttribute,
 		config.GroupNameAttribute,
 		config.GroupSearchAttribute,
-		config.GroupUniqueIDAttribute}
+		uidAttribute}
 	return groupSeachAttributes
 }
 

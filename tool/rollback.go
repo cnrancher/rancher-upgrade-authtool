@@ -73,8 +73,8 @@ func Rollback(c *Config) error {
 		gidAttribute = authConfig.GroupUniqueIDAttribute
 		baseDN = authConfig.UserSearchBase
 		groupSearchDN = authConfig.GroupSearchBase
-		searchAttribute = GetUserSearchAttributes(authConfig)
-		groupSearchAttribute = GetGroupSearchAttributes(authConfig)
+		searchAttribute = GetUserSearchAttributes(authConfig, uidAttribute)
+		groupSearchAttribute = GetGroupSearchAttributes(authConfig, gidAttribute)
 		username := GetUserExternalID(authConfig.ServiceAccountUsername, authConfig.DefaultLoginDomain)
 		err = lConn.Bind(username, authConfig.ServiceAccountPassword)
 		if err != nil {
@@ -94,8 +94,8 @@ func Rollback(c *Config) error {
 		gidAttribute = ldapConfig.GroupUniqueIDAttribute
 		baseDN = ldapConfig.UserSearchBase
 		groupSearchDN = ldapConfig.GroupSearchBase
-		searchAttribute = GetUserSearchAttributesForLDAP(ldapConfig)
-		groupSearchAttribute = GetGroupSearchAttributesForLDAP(ldapConfig)
+		searchAttribute = GetUserSearchAttributesForLDAP(ldapConfig, uidAttribute)
+		groupSearchAttribute = GetGroupSearchAttributesForLDAP(ldapConfig, gidAttribute)
 		username := GetUserExternalID(ldapConfig.ServiceAccountDistinguishedName, "")
 		err = lConn.Bind(username, ldapConfig.ServiceAccountPassword)
 		if err != nil {
