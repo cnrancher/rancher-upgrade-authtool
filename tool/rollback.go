@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	corev1 "github.com/rancher/types/apis/core/v1"
-	"github.com/rancher/types/apis/management.cattle.io/v3"
-	managementv3 "github.com/rancher/types/apis/management.cattle.io/v3"
+	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
+	corev1 "github.com/rancher/rancher/pkg/generated/norman/core/v1"
+	managementv3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
 	"github.com/sirupsen/logrus"
 	ldapv2 "gopkg.in/ldap.v2"
 
@@ -65,7 +65,7 @@ func Rollback(c *Config) error {
 			return err
 		}
 		logrus.Infof("Get Active Directory Auth config: %++v", *authConfig)
-		lConn, err = NewLDAPConn(authConfig.Servers, authConfig.TLS, authConfig.Port, authConfig.ConnectionTimeout, caPool)
+		lConn, err = NewLDAPConn(authConfig.Servers, authConfig.TLS, authConfig.StartTLS, authConfig.Port, authConfig.ConnectionTimeout, caPool)
 		if err != nil {
 			return err
 		}
@@ -86,7 +86,7 @@ func Rollback(c *Config) error {
 			return err
 		}
 		logrus.Infof("Get OpenLDAP Auth config: %++v", *ldapConfig)
-		lConn, err = NewLDAPConn(ldapConfig.Servers, ldapConfig.TLS, ldapConfig.Port, ldapConfig.ConnectionTimeout, caPool)
+		lConn, err = NewLDAPConn(ldapConfig.Servers, ldapConfig.TLS, ldapConfig.StartTLS, ldapConfig.Port, ldapConfig.ConnectionTimeout, caPool)
 		if err != nil {
 			return err
 		}
@@ -187,17 +187,16 @@ func Rollback(c *Config) error {
 		}
 	}
 
-
 	logrus.Println("Step 4. Manual check data")
 	for _, user := range failedUsers {
 		logrus.Warnf("Failed to rollback user %s with principals %v, please manual check the data", user.Name, user.PrincipalIDs)
 	}
 	for _, mancrtb := range failedCRTB {
-		logrus.Warnf("Failed to rollback crtb %s, ns %s with userPrincipal %s, " +
+		logrus.Warnf("Failed to rollback crtb %s, ns %s with userPrincipal %s, "+
 			"groupPrincipal %s, please manual check the data", mancrtb.Name, mancrtb.Namespace, mancrtb.UserPrincipalName, mancrtb.GroupPrincipalName)
 	}
 	for _, prtb := range failedPRTB {
-		logrus.Warnf("Failed to rollback prtb %s, ns %s with userPrincipal %s, " +
+		logrus.Warnf("Failed to rollback prtb %s, ns %s with userPrincipal %s, "+
 			"groupPrincipal %s, please manual check the data", prtb.Name, prtb.Namespace, prtb.UserPrincipalName, prtb.GroupPrincipalName)
 	}
 
@@ -250,8 +249,8 @@ func rollbackUser(beforeUpdate map[string]v3.User, lConn *ldapv2.Conn,
 func rollbackClusterPermission(beforeUpdateCRTB []v3.ClusterRoleTemplateBinding, lConn *ldapv2.Conn,
 	authConfigType, baseDN, groupDN, uidAttribute, gidAttribute string,
 	searchAttribute, groupSearchAttribute []string) ([]v3.ClusterRoleTemplateBinding, []v3.ClusterRoleTemplateBinding) {
-		prepredCRTB := []v3.ClusterRoleTemplateBinding{}
-		failedCRTB := []v3.ClusterRoleTemplateBinding{}
+	prepredCRTB := []v3.ClusterRoleTemplateBinding{}
+	failedCRTB := []v3.ClusterRoleTemplateBinding{}
 	for _, crtb := range beforeUpdateCRTB {
 		if crtb.UserPrincipalName != "" && strings.HasPrefix(crtb.UserPrincipalName, fmt.Sprintf("%s%s://", authConfigType, UserUIDScope)) {
 			oldPrincipalID, err := generateOldPrincipal(lConn, authConfigType, UserScope, crtb.UserPrincipalName, uidAttribute, baseDN, searchAttribute)

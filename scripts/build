@@ -8,4 +8,8 @@ cd $(dirname $0)/..
 mkdir -p bin
 [ "$(uname)" != "Darwin" ] && LINKFLAGS="-extldflags -static -s"
 
-go build -o bin/authtool
+if [ "$OAUTH_TOKEN" != "" ]; then
+   git config --global url."https://${OAUTH_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+fi
+
+GOPRIVATE="github.com/cnrancher" CGO_ENABLED=0 go build -o bin/authtool

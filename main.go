@@ -27,19 +27,6 @@ func main() {
 				return tool.Upgrade(&config)
 			},
 		},
-		{
-			Name: "rollback",
-			Aliases: []string{"r"},
-			Usage:   "rollback rancher user to old version",
-			Action: func(c *cli.Context) error {
-				if config.AuthType == "0" {
-					config.AuthConfigType = tool.ActiveDirectoryAuth
-				} else if config.AuthType == "1" {
-					config.AuthConfigType = tool.OpenLDAPAuth
-				}
-				return tool.Rollback(&config)
-			},
-		},
 	}
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{

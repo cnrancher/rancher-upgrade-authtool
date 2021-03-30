@@ -10,10 +10,10 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
-	corev1 "github.com/rancher/types/apis/core/v1"
-	managementv3 "github.com/rancher/types/apis/management.cattle.io/v3"
-	v3 "github.com/rancher/types/apis/management.cattle.io/v3"
-	v3client "github.com/rancher/types/client/management/v3"
+	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
+	v3client "github.com/rancher/rancher/pkg/client/generated/management/v3"
+	corev1 "github.com/rancher/rancher/pkg/generated/norman/core/v1"
+	v3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
 	ldapv2 "gopkg.in/ldap.v2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -75,7 +75,7 @@ func GetDNAndScopeFromPrincipalID(principalID string) (string, string, error) {
 	return externalID, scope, nil
 }
 
-func NewLDAPConn(servers []string, TLS bool, port int64, connectionTimeout int64, caPool *x509.CertPool) (*ldapv2.Conn, error) {
+func NewLDAPConn(servers []string, TLS, startTLS bool, port int64, connectionTimeout int64, caPool *x509.CertPool) (*ldapv2.Conn, error) {
 	var lConn *ldapv2.Conn
 	var err error
 	var tlsConfig *tls.Config
@@ -85,11 +85,19 @@ func NewLDAPConn(servers []string, TLS bool, port int64, connectionTimeout int64
 		return nil, errors.New("invalid server config. only exactly 1 server is currently supported")
 	}
 	server := servers[0]
+	tlsConfig = &tls.Config{RootCAs: caPool, InsecureSkipVerify: false, ServerName: server}
 	if TLS {
-		tlsConfig = &tls.Config{RootCAs: caPool, InsecureSkipVerify: false, ServerName: server}
 		lConn, err = ldapv2.DialTLS("tcp", fmt.Sprintf("%s:%d", server, port), tlsConfig)
 		if err != nil {
 			return nil, fmt.Errorf("Error creating ssl connection: %v", err)
+		}
+	} else if startTLS {
+		lConn, err = ldapv2.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
+		if err != nil {
+			return nil, fmt.Errorf("Error creating connection for startTLS: %v", err)
+		}
+		if err := lConn.StartTLS(tlsConfig); err != nil {
+			return nil, fmt.Errorf("Error upgrading startTLS connection: %v", err)
 		}
 	} else {
 		lConn, err = ldapv2.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
@@ -103,7 +111,7 @@ func NewLDAPConn(servers []string, TLS bool, port int64, connectionTimeout int64
 	return lConn, nil
 }
 
-func GetActiveDirectoryConfig(management managementv3.Interface, coreClient corev1.SecretInterface) (*v3.ActiveDirectoryConfig, *x509.CertPool, error) {
+func GetActiveDirectoryConfig(management v3.Interface, coreClient corev1.SecretInterface) (*v32.ActiveDirectoryConfig, *x509.CertPool, error) {
 	authConfigObj, err := management.AuthConfigs("").ObjectClient().UnstructuredClient().Get("activedirectory", metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve ActiveDirectoryConfig, error: %v", err)
@@ -115,7 +123,7 @@ func GetActiveDirectoryConfig(management managementv3.Interface, coreClient core
 	}
 	storedADConfigMap := u.UnstructuredContent()
 
-	storedADConfig := &v3.ActiveDirectoryConfig{}
+	storedADConfig := &v32.ActiveDirectoryConfig{}
 	mapstructure.Decode(storedADConfigMap, storedADConfig)
 
 	metadataMap, ok := storedADConfigMap["metadata"].(map[string]interface{})
@@ -144,7 +152,7 @@ func GetActiveDirectoryConfig(management managementv3.Interface, coreClient core
 	return storedADConfig, pool, nil
 }
 
-func GetLDAPConfig(management managementv3.Interface, coreClient corev1.SecretInterface) (*v3.LdapConfig, *x509.CertPool, error) {
+func GetLDAPConfig(management v3.Interface, coreClient corev1.SecretInterface) (*v32.LdapConfig, *x509.CertPool, error) {
 	authConfigObj, err := management.AuthConfigs("").ObjectClient().UnstructuredClient().Get("openldap", metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve openldap config, error: %v", err)
@@ -155,16 +163,13 @@ func GetLDAPConfig(management managementv3.Interface, coreClient corev1.SecretIn
 		return nil, nil, fmt.Errorf("failed to retrieve openldap config, cannot read k8s Unstructured data")
 	}
 	storedLdapConfigMap := u.UnstructuredContent()
-
 	storedLdapConfig := &v3.LdapConfig{}
 
 	mapstructure.Decode(storedLdapConfigMap, storedLdapConfig)
-
 	metadataMap, ok := storedLdapConfigMap["metadata"].(map[string]interface{})
 	if !ok {
 		return nil, nil, fmt.Errorf("failed to retrieve openldap metadata, cannot read k8s Unstructured data")
 	}
-
 	objectMeta := &metav1.ObjectMeta{}
 	mapstructure.Decode(metadataMap, objectMeta)
 	storedLdapConfig.ObjectMeta = *objectMeta
@@ -195,7 +200,7 @@ func GetUserExternalID(username string, loginDomain string) string {
 	return username
 }
 
-func GetUserSearchAttributes(config *v3.ActiveDirectoryConfig, uidAttribute string) []string {
+func GetUserSearchAttributes(config *v32.ActiveDirectoryConfig, uidAttribute string) []string {
 	userSearchAttributes := []string{
 		"memberOf",
 		config.UserLoginAttribute,
@@ -204,7 +209,7 @@ func GetUserSearchAttributes(config *v3.ActiveDirectoryConfig, uidAttribute stri
 	return userSearchAttributes
 }
 
-func GetGroupSearchAttributes(config *v3.ActiveDirectoryConfig, uidAttribute string) []string {
+func GetGroupSearchAttributes(config *v32.ActiveDirectoryConfig, uidAttribute string) []string {
 	groupSeachAttributes := []string{"memberOf",
 		"objectClass",
 		config.GroupObjectClass,
@@ -215,7 +220,7 @@ func GetGroupSearchAttributes(config *v3.ActiveDirectoryConfig, uidAttribute str
 	return groupSeachAttributes
 }
 
-func GetUserSearchAttributesForLDAP(config *v3.LdapConfig, uidAttribute string) []string {
+func GetUserSearchAttributesForLDAP(config *v32.LdapConfig, uidAttribute string) []string {
 	userSearchAttributes := []string{"dn", config.UserMemberAttribute,
 		"objectClass",
 		config.UserObjectClass,
@@ -226,7 +231,7 @@ func GetUserSearchAttributesForLDAP(config *v3.LdapConfig, uidAttribute string) 
 	return userSearchAttributes
 }
 
-func GetGroupSearchAttributesForLDAP(config *v3.LdapConfig, uidAttribute string) []string {
+func GetGroupSearchAttributesForLDAP(config *v32.LdapConfig, uidAttribute string) []string {
 	groupSeachAttributes := []string{config.GroupMemberUserAttribute,
 		config.GroupMemberMappingAttribute,
 		"objectClass",
@@ -238,7 +243,7 @@ func GetGroupSearchAttributesForLDAP(config *v3.LdapConfig, uidAttribute string)
 	return groupSeachAttributes
 }
 
-func GetUsersForUpdate(management managementv3.Interface, authType string) (map[string]v3.User, error) {
+func GetUsersForUpdate(management v3.Interface, authType string) (map[string]v32.User, error) {
 	userList, err := management.Users("").List(metav1.ListOptions{})
 	if err != nil {
 		return nil, err
