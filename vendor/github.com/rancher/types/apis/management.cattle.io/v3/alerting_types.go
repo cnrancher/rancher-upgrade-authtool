@@ -1,6 +1,8 @@
 package v3
 
 import (
+	"strings"
+
 	"github.com/rancher/norman/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -19,6 +21,10 @@ type ClusterAlert struct {
 	Status AlertStatus `json:"status"`
 }
 
+func (c *ClusterAlert) ObjClusterName() string {
+	return c.Spec.ObjClusterName()
+}
+
 type ProjectAlert struct {
 	types.Namespaced
 
@@ -31,6 +37,10 @@ type ProjectAlert struct {
 	// Most recent observed status of the alert. More info:
 	// https://github.com/kubernetes/community/blob/master/contributors/devel/api-conventions.md#spec-and-status
 	Status AlertStatus `json:"status"`
+}
+
+func (p *ProjectAlert) ObjClusterName() string {
+	return p.Spec.ObjClusterName()
 }
 
 type AlertCommonSpec struct {
@@ -51,6 +61,10 @@ type ClusterAlertSpec struct {
 	TargetEvent         *TargetEvent         `json:"targetEvent,omitempty"`
 }
 
+func (c *ClusterAlertSpec) ObjClusterName() string {
+	return c.ClusterName
+}
+
 type ProjectAlertSpec struct {
 	AlertCommonSpec
 
@@ -59,10 +73,17 @@ type ProjectAlertSpec struct {
 	TargetPod      *TargetPod      `json:"targetPod,omitempty"`
 }
 
+func (p *ProjectAlertSpec) ObjClusterName() string {
+	if parts := strings.SplitN(p.ProjectName, ":", 2); len(parts) == 2 {
+		return parts[0]
+	}
+	return ""
+}
+
 type Recipient struct {
 	Recipient    string `json:"recipient,omitempty"`
 	NotifierName string `json:"notifierName,omitempty" norman:"required,type=reference[notifier]"`
-	NotifierType string `json:"notifierType,omitempty" norman:"required,options=slack|email|pagerduty|webhook|wechat"`
+	NotifierType string `json:"notifierType,omitempty" norman:"required,options=slack|email|pagerduty|webhook|wechat|dingtalk|msteams|aliyunsms|servicenow"`
 }
 
 type TargetNode struct {
@@ -113,6 +134,10 @@ type ClusterAlertGroup struct {
 	Status AlertStatus `json:"status"`
 }
 
+func (c *ClusterAlertGroup) ObjClusterName() string {
+	return c.Spec.ObjClusterName()
+}
+
 type ProjectAlertGroup struct {
 	types.Namespaced
 
@@ -127,16 +152,31 @@ type ProjectAlertGroup struct {
 	Status AlertStatus `json:"status"`
 }
 
+func (p *ProjectAlertGroup) ObjClusterName() string {
+	return p.Spec.ObjClusterName()
+}
+
 type ClusterGroupSpec struct {
 	ClusterName string      `json:"clusterName" norman:"type=reference[cluster]"`
 	Recipients  []Recipient `json:"recipients,omitempty"`
 	CommonGroupField
 }
 
+func (c *ClusterGroupSpec) ObjClusterName() string {
+	return c.ClusterName
+}
+
 type ProjectGroupSpec struct {
 	ProjectName string      `json:"projectName" norman:"type=reference[project]"`
 	Recipients  []Recipient `json:"recipients,omitempty"`
 	CommonGroupField
+}
+
+func (p *ProjectGroupSpec) ObjClusterName() string {
+	if parts := strings.SplitN(p.ProjectName, ":", 2); len(parts) == 2 {
+		return parts[0]
+	}
+	return ""
 }
 
 type ClusterAlertRule struct {
@@ -153,6 +193,10 @@ type ClusterAlertRule struct {
 	Status AlertStatus `json:"status"`
 }
 
+func (c *ClusterAlertRule) ObjClusterName() string {
+	return c.Spec.ObjClusterName()
+}
+
 type ClusterAlertRuleSpec struct {
 	CommonRuleField
 	ClusterName       string             `json:"clusterName" norman:"type=reference[cluster]"`
@@ -161,6 +205,11 @@ type ClusterAlertRuleSpec struct {
 	EventRule         *EventRule         `json:"eventRule,omitempty"`
 	SystemServiceRule *SystemServiceRule `json:"systemServiceRule,omitempty"`
 	MetricRule        *MetricRule        `json:"metricRule,omitempty"`
+	ClusterScanRule   *ClusterScanRule   `json:"clusterScanRule,omitempty"`
+}
+
+func (c *ClusterAlertRuleSpec) ObjClusterName() string {
+	return c.ClusterName
 }
 
 type ProjectAlertRule struct {
@@ -177,6 +226,10 @@ type ProjectAlertRule struct {
 	Status AlertStatus `json:"status"`
 }
 
+func (p *ProjectAlertRule) ObjClusterName() string {
+	return p.Spec.ObjClusterName()
+}
+
 type ProjectAlertRuleSpec struct {
 	CommonRuleField
 	ProjectName  string        `json:"projectName" norman:"type=reference[project]"`
@@ -186,6 +239,13 @@ type ProjectAlertRuleSpec struct {
 	MetricRule   *MetricRule   `json:"metricRule,omitempty"`
 }
 
+func (p *ProjectAlertRuleSpec) ObjClusterName() string {
+	if parts := strings.SplitN(p.ProjectName, ":", 2); len(parts) == 2 {
+		return parts[0]
+	}
+	return ""
+}
+
 type CommonGroupField struct {
 	DisplayName string `json:"displayName,omitempty" norman:"required"`
 	Description string `json:"description,omitempty"`
@@ -193,10 +253,23 @@ type CommonGroupField struct {
 }
 
 type CommonRuleField struct {
-	DisplayName string `json:"displayName,omitempty"`
-	Severity    string `json:"severity,omitempty" norman:"required,options=info|critical|warning,default=critical"`
-	Inherited   *bool  `json:"inherited,omitempty" norman:"default=true"`
+	DisplayName     string           `json:"displayName,omitempty"`
+	Severity        string           `json:"severity,omitempty" norman:"required,options=info|critical|warning,default=critical"`
+	Inherited       *bool            `json:"inherited,omitempty" norman:"default=true"`
+	ExtraAlertDatas []ExtraAlertData `json:"extraAlertDatas,omitempty"`
 	TimingField
+}
+
+type ClusterScanRule struct {
+	ScanRunType  ClusterScanRunType `json:"scanRunType,omitempty" norman:"required,options=manual|scheduled,default=scheduled"`
+	FailuresOnly bool               `json:"failuresOnly,omitempty"`
+}
+
+type ExtraAlertData struct {
+	TargetKey   string `json:"targetKey,omitempty" norman:"required"`
+	SourceValue string `json:"sourceValue,omitempty" norman:"required"`
+	SourceType  string `json:"sourceType,omitempty" norman:"required,options=static|labels|annotations,default=static"`
+	TargetType  string `json:"targetType,omitempty" norman:"required,options=labels|annotations,default=labels"`
 }
 
 type MetricRule struct {
@@ -243,6 +316,30 @@ type SystemServiceRule struct {
 	Condition string `json:"condition,omitempty" norman:"required,options=etcd|controller-manager|scheduler,default=scheduler"`
 }
 
+type NotificationTemplate struct {
+	types.Namespaced
+
+	metav1.TypeMeta `json:",inline"`
+	// Standard object’s metadata. More info:
+	// https://github.com/kubernetes/community/blob/master/contributors/devel/api-conventions.md#metadata
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec NotificationTemplateSpec `json:"spec"`
+	// Most recent observed status of the notificationTemplate. More info:
+	// https://github.com/kubernetes/community/blob/master/contributors/devel/api-conventions.md#spec-and-status
+	Status NotificationTemplateStatus `json:"status"`
+}
+
+type NotificationTemplateSpec struct {
+	ClusterName string `json:"clusterName" norman:"type=reference[cluster]"`
+
+	Enabled bool   `json:"enabled,omitempty"`
+	Content string `json:"content,omitempty"`
+}
+
+type NotificationTemplateStatus struct {
+}
+
 type Notifier struct {
 	types.Namespaced
 
@@ -257,36 +354,52 @@ type Notifier struct {
 	Status NotifierStatus `json:"status"`
 }
 
+func (n *Notifier) ObjClusterName() string {
+	return n.Spec.ObjClusterName()
+}
+
 type NotifierSpec struct {
 	ClusterName string `json:"clusterName" norman:"type=reference[cluster]"`
 
-	DisplayName     string           `json:"displayName,omitempty" norman:"required"`
-	Description     string           `json:"description,omitempty"`
-	SendResolved    bool             `json:"sendResolved,omitempty"`
-	SMTPConfig      *SMTPConfig      `json:"smtpConfig,omitempty"`
-	SlackConfig     *SlackConfig     `json:"slackConfig,omitempty"`
-	PagerdutyConfig *PagerdutyConfig `json:"pagerdutyConfig,omitempty"`
-	WebhookConfig   *WebhookConfig   `json:"webhookConfig,omitempty"`
-	WechatConfig    *WechatConfig    `json:"wechatConfig,omitempty"`
+	DisplayName      string            `json:"displayName,omitempty" norman:"required"`
+	Description      string            `json:"description,omitempty"`
+	SendResolved     bool              `json:"sendResolved,omitempty"`
+	SMTPConfig       *SMTPConfig       `json:"smtpConfig,omitempty"`
+	SlackConfig      *SlackConfig      `json:"slackConfig,omitempty"`
+	PagerdutyConfig  *PagerdutyConfig  `json:"pagerdutyConfig,omitempty"`
+	WebhookConfig    *WebhookConfig    `json:"webhookConfig,omitempty"`
+	WechatConfig     *WechatConfig     `json:"wechatConfig,omitempty"`
+	DingtalkConfig   *DingtalkConfig   `json:"dingtalkConfig,omitempty"`
+	MSTeamsConfig    *MSTeamsConfig    `json:"msteamsConfig,omitempty"`
+	AliyunSMSConfig  *AliyunSMSConfig  `json:"aliyunsmsConfig,omitempty"`
+	ServiceNowConfig *ServiceNowConfig `json:"servicenowConfig,omitempty"`
+}
+
+func (n *NotifierSpec) ObjClusterName() string {
+	return n.ClusterName
 }
 
 type Notification struct {
-	Message         string           `json:"message,omitempty"`
-	SMTPConfig      *SMTPConfig      `json:"smtpConfig,omitempty"`
-	SlackConfig     *SlackConfig     `json:"slackConfig,omitempty"`
-	PagerdutyConfig *PagerdutyConfig `json:"pagerdutyConfig,omitempty"`
-	WebhookConfig   *WebhookConfig   `json:"webhookConfig,omitempty"`
-	WechatConfig    *WechatConfig    `json:"wechatConfig,omitempty"`
+	Message          string            `json:"message,omitempty"`
+	SMTPConfig       *SMTPConfig       `json:"smtpConfig,omitempty"`
+	SlackConfig      *SlackConfig      `json:"slackConfig,omitempty"`
+	PagerdutyConfig  *PagerdutyConfig  `json:"pagerdutyConfig,omitempty"`
+	WebhookConfig    *WebhookConfig    `json:"webhookConfig,omitempty"`
+	WechatConfig     *WechatConfig     `json:"wechatConfig,omitempty"`
+	DingtalkConfig   *DingtalkConfig   `json:"dingtalkConfig,omitempty"`
+	MSTeamsConfig    *MSTeamsConfig    `json:"msteamsConfig,omitempty"`
+	AliyunSMSConfig  *AliyunSMSConfig  `json:"aliyunsmsConfig,omitempty"`
+	ServiceNowConfig *ServiceNowConfig `json:"servicenowConfig,omitempty"`
 }
 
 type SMTPConfig struct {
 	Host             string `json:"host,omitempty" norman:"required,type=hostname"`
 	Port             int    `json:"port,omitempty" norman:"required,min=1,max=65535,default=587"`
 	Username         string `json:"username,omitempty"`
-	Password         string `json:"password,omitempty"`
+	Password         string `json:"password,omitempty" norman:"type=password"`
 	Sender           string `json:"sender,omitempty" norman:"required"`
 	DefaultRecipient string `json:"defaultRecipient,omitempty" norman:"required"`
-	TLS              bool   `json:"tls,omitempty" norman:"required,default=true"`
+	TLS              *bool  `json:"tls,omitempty" norman:"required,default=true"`
 }
 
 type SlackConfig struct {
@@ -305,6 +418,25 @@ type WebhookConfig struct {
 	*HTTPClientConfig
 }
 
+type DingtalkConfig struct {
+	URL    string `json:"url,omitempty" norman:"required"`
+	Secret string `json:"secret,omitempty" norman:"type=password"`
+	*HTTPClientConfig
+}
+
+type MSTeamsConfig struct {
+	URL string `json:"url,omitempty" norman:"required"`
+	*HTTPClientConfig
+}
+
+type AliyunSMSConfig struct {
+	AccessKeyID     string   `json:"accessKeyID,omitempty" norman:"required"`
+	AccessKeySecret string   `json:"accessKeySecret,omitempty" norman:"type=password,required"`
+	SignName        string   `json:"signName,omitempty" norman:"required"`
+	TemplateCode    string   `json:"templateCode,omitempty" norman:"required"`
+	To              []string `json:"to,omitempty"`
+}
+
 type WechatConfig struct {
 	DefaultRecipient string `json:"defaultRecipient,omitempty" norman:"required"`
 	Secret           string `json:"secret,omitempty" norman:"type=password,required"`
@@ -315,11 +447,27 @@ type WechatConfig struct {
 	*HTTPClientConfig
 }
 
+// ServiceNowConfig Support serviceNow
+type ServiceNowConfig struct {
+	URL string `json:"url,omitempty" norman:"required"`
+	*HTTPClientConfig
+}
+
 type NotifierStatus struct {
+}
+
+// BasicAuth contains basic HTTP authentication credentials.
+type BasicAuth struct {
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
 // HTTPClientConfig configures an HTTP client.
 type HTTPClientConfig struct {
+	// PANDARIA The basic auth info for the targets.
+	BasicAuth *BasicAuth `json:"basic_auth,omitempty"`
+	// PANDARIA The bearer token for the targets.
+	BearerToken string `json:"bearer_token,omitempty"`
 	// HTTP proxy server to use to connect to the targets.
 	ProxyURL string `json:"proxyUrl,omitempty"`
 }

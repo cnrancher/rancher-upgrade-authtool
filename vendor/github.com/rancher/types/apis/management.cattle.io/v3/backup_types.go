@@ -23,6 +23,8 @@ type BackupConfig struct {
 	S3BackupConfig *S3BackupConfig `yaml:",omitempty" json:"s3BackupConfig"`
 	// replace special characters in snapshot names
 	SafeTimestamp bool `yaml:"safe_timestamp" json:"safeTimestamp,omitempty"`
+	// Backup execution timeout
+	Timeout int `yaml:"timeout" json:"timeout,omitempty" norman:"default=300"`
 }
 
 type S3BackupConfig struct {
@@ -66,6 +68,10 @@ type EtcdBackupSpec struct {
 
 type EtcdBackupStatus struct {
 	Conditions []EtcdBackupCondition `json:"conditions"`
+	// version of k8s in the backup pulled from rke config
+	KubernetesVersion string `yaml:"kubernetesVersion" json:"kubernetesVersion,omitempty" norman:"noupdate"`
+	// json + gzipped + base64 backup of the cluster object when the backup was created
+	ClusterObject string `yaml:"clusterObject" json:"clusterObject,omitempty" norman:"type=password,noupdate"`
 }
 
 type EtcdBackupCondition struct {

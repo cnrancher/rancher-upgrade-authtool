@@ -78,6 +78,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&GroupList{},
 		&GroupMember{},
 		&GroupMemberList{},
+		&SamlToken{},
+		&SamlTokenList{},
 		&Principal{},
 		&PrincipalList{},
 		&User{},
@@ -99,8 +101,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&ClusterLoggingList{},
 		&ProjectLogging{},
 		&ProjectLoggingList{},
-		&ListenConfig{},
-		&ListenConfigList{},
 		&Setting{},
 		&SettingList{},
 		&Feature{},
@@ -109,6 +109,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&ClusterAlertList{},
 		&ProjectAlert{},
 		&ProjectAlertList{},
+		&NotificationTemplate{},
+		&NotificationTemplateList{},
 		&Notifier{},
 		&NotifierList{},
 		&ClusterAlertGroup{},
@@ -157,6 +159,10 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&RKEK8sServiceOptionList{},
 		&RKEAddon{},
 		&RKEAddonList{},
+		&CisConfig{},
+		&CisConfigList{},
+		&CisBenchmarkVersion{},
+		&CisBenchmarkVersionList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

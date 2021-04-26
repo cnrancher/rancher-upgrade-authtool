@@ -6,12 +6,15 @@ import (
 
 const (
 	NotifierType                      = "notifier"
+	NotifierFieldAliyunSMSConfig      = "aliyunsmsConfig"
 	NotifierFieldAnnotations          = "annotations"
 	NotifierFieldClusterID            = "clusterId"
 	NotifierFieldCreated              = "created"
 	NotifierFieldCreatorID            = "creatorId"
 	NotifierFieldDescription          = "description"
+	NotifierFieldDingtalkConfig       = "dingtalkConfig"
 	NotifierFieldLabels               = "labels"
+	NotifierFieldMSTeamsConfig        = "msteamsConfig"
 	NotifierFieldName                 = "name"
 	NotifierFieldNamespaceId          = "namespaceId"
 	NotifierFieldOwnerReferences      = "ownerReferences"
@@ -19,6 +22,7 @@ const (
 	NotifierFieldRemoved              = "removed"
 	NotifierFieldSMTPConfig           = "smtpConfig"
 	NotifierFieldSendResolved         = "sendResolved"
+	NotifierFieldServiceNowConfig     = "servicenowConfig"
 	NotifierFieldSlackConfig          = "slackConfig"
 	NotifierFieldState                = "state"
 	NotifierFieldStatus               = "status"
@@ -31,12 +35,15 @@ const (
 
 type Notifier struct {
 	types.Resource
+	AliyunSMSConfig      *AliyunSMSConfig  `json:"aliyunsmsConfig,omitempty" yaml:"aliyunsmsConfig,omitempty"`
 	Annotations          map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
 	ClusterID            string            `json:"clusterId,omitempty" yaml:"clusterId,omitempty"`
 	Created              string            `json:"created,omitempty" yaml:"created,omitempty"`
 	CreatorID            string            `json:"creatorId,omitempty" yaml:"creatorId,omitempty"`
 	Description          string            `json:"description,omitempty" yaml:"description,omitempty"`
+	DingtalkConfig       *DingtalkConfig   `json:"dingtalkConfig,omitempty" yaml:"dingtalkConfig,omitempty"`
 	Labels               map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
+	MSTeamsConfig        *MSTeamsConfig    `json:"msteamsConfig,omitempty" yaml:"msteamsConfig,omitempty"`
 	Name                 string            `json:"name,omitempty" yaml:"name,omitempty"`
 	NamespaceId          string            `json:"namespaceId,omitempty" yaml:"namespaceId,omitempty"`
 	OwnerReferences      []OwnerReference  `json:"ownerReferences,omitempty" yaml:"ownerReferences,omitempty"`
@@ -44,6 +51,7 @@ type Notifier struct {
 	Removed              string            `json:"removed,omitempty" yaml:"removed,omitempty"`
 	SMTPConfig           *SMTPConfig       `json:"smtpConfig,omitempty" yaml:"smtpConfig,omitempty"`
 	SendResolved         bool              `json:"sendResolved,omitempty" yaml:"sendResolved,omitempty"`
+	ServiceNowConfig     *ServiceNowConfig `json:"servicenowConfig,omitempty" yaml:"servicenowConfig,omitempty"`
 	SlackConfig          *SlackConfig      `json:"slackConfig,omitempty" yaml:"slackConfig,omitempty"`
 	State                string            `json:"state,omitempty" yaml:"state,omitempty"`
 	Status               *NotifierStatus   `json:"status,omitempty" yaml:"status,omitempty"`
@@ -66,6 +74,7 @@ type NotifierClient struct {
 
 type NotifierOperations interface {
 	List(opts *types.ListOpts) (*NotifierCollection, error)
+	ListAll(opts *types.ListOpts) (*NotifierCollection, error)
 	Create(opts *Notifier) (*Notifier, error)
 	Update(existing *Notifier, updates interface{}) (*Notifier, error)
 	Replace(existing *Notifier) (*Notifier, error)
@@ -105,6 +114,24 @@ func (c *NotifierClient) List(opts *types.ListOpts) (*NotifierCollection, error)
 	resp := &NotifierCollection{}
 	err := c.apiClient.Ops.DoList(NotifierType, opts, resp)
 	resp.client = c
+	return resp, err
+}
+
+func (c *NotifierClient) ListAll(opts *types.ListOpts) (*NotifierCollection, error) {
+	resp := &NotifierCollection{}
+	resp, err := c.List(opts)
+	if err != nil {
+		return resp, err
+	}
+	data := resp.Data
+	for next, err := resp.Next(); next != nil && err == nil; next, err = next.Next() {
+		data = append(data, next.Data...)
+		resp = next
+		resp.Data = data
+	}
+	if err != nil {
+		return resp, err
+	}
 	return resp, err
 }
 

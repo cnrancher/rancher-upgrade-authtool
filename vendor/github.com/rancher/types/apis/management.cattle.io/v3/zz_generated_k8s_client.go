@@ -42,6 +42,7 @@ type Interface interface {
 	TemplateContentsGetter
 	GroupsGetter
 	GroupMembersGetter
+	SamlTokensGetter
 	PrincipalsGetter
 	UsersGetter
 	AuthConfigsGetter
@@ -53,11 +54,11 @@ type Interface interface {
 	ProjectNetworkPoliciesGetter
 	ClusterLoggingsGetter
 	ProjectLoggingsGetter
-	ListenConfigsGetter
 	SettingsGetter
 	FeaturesGetter
 	ClusterAlertsGetter
 	ProjectAlertsGetter
+	NotificationTemplatesGetter
 	NotifiersGetter
 	ClusterAlertGroupsGetter
 	ProjectAlertGroupsGetter
@@ -82,73 +83,8 @@ type Interface interface {
 	RKEK8sSystemImagesGetter
 	RKEK8sServiceOptionsGetter
 	RKEAddonsGetter
-}
-
-type Clients struct {
-	Interface Interface
-
-	NodePool                                NodePoolClient
-	Node                                    NodeClient
-	NodeDriver                              NodeDriverClient
-	NodeTemplate                            NodeTemplateClient
-	Project                                 ProjectClient
-	GlobalRole                              GlobalRoleClient
-	GlobalRoleBinding                       GlobalRoleBindingClient
-	RoleTemplate                            RoleTemplateClient
-	PodSecurityPolicyTemplate               PodSecurityPolicyTemplateClient
-	PodSecurityPolicyTemplateProjectBinding PodSecurityPolicyTemplateProjectBindingClient
-	ClusterRoleTemplateBinding              ClusterRoleTemplateBindingClient
-	ProjectRoleTemplateBinding              ProjectRoleTemplateBindingClient
-	Cluster                                 ClusterClient
-	ClusterRegistrationToken                ClusterRegistrationTokenClient
-	Catalog                                 CatalogClient
-	Template                                TemplateClient
-	CatalogTemplate                         CatalogTemplateClient
-	CatalogTemplateVersion                  CatalogTemplateVersionClient
-	TemplateVersion                         TemplateVersionClient
-	TemplateContent                         TemplateContentClient
-	Group                                   GroupClient
-	GroupMember                             GroupMemberClient
-	Principal                               PrincipalClient
-	User                                    UserClient
-	AuthConfig                              AuthConfigClient
-	LdapConfig                              LdapConfigClient
-	Token                                   TokenClient
-	DynamicSchema                           DynamicSchemaClient
-	Preference                              PreferenceClient
-	UserAttribute                           UserAttributeClient
-	ProjectNetworkPolicy                    ProjectNetworkPolicyClient
-	ClusterLogging                          ClusterLoggingClient
-	ProjectLogging                          ProjectLoggingClient
-	ListenConfig                            ListenConfigClient
-	Setting                                 SettingClient
-	Feature                                 FeatureClient
-	ClusterAlert                            ClusterAlertClient
-	ProjectAlert                            ProjectAlertClient
-	Notifier                                NotifierClient
-	ClusterAlertGroup                       ClusterAlertGroupClient
-	ProjectAlertGroup                       ProjectAlertGroupClient
-	ClusterAlertRule                        ClusterAlertRuleClient
-	ProjectAlertRule                        ProjectAlertRuleClient
-	ComposeConfig                           ComposeConfigClient
-	ProjectCatalog                          ProjectCatalogClient
-	ClusterCatalog                          ClusterCatalogClient
-	MultiClusterApp                         MultiClusterAppClient
-	MultiClusterAppRevision                 MultiClusterAppRevisionClient
-	GlobalDNS                               GlobalDNSClient
-	GlobalDNSProvider                       GlobalDNSProviderClient
-	KontainerDriver                         KontainerDriverClient
-	EtcdBackup                              EtcdBackupClient
-	ClusterScan                             ClusterScanClient
-	MonitorMetric                           MonitorMetricClient
-	ClusterMonitorGraph                     ClusterMonitorGraphClient
-	ProjectMonitorGraph                     ProjectMonitorGraphClient
-	CloudCredential                         CloudCredentialClient
-	ClusterTemplate                         ClusterTemplateClient
-	ClusterTemplateRevision                 ClusterTemplateRevisionClient
-	RKEK8sSystemImage                       RKEK8sSystemImageClient
-	RKEK8sServiceOption                     RKEK8sServiceOptionClient
-	RKEAddon                                RKEAddonClient
+	CisConfigsGetter
+	CisBenchmarkVersionsGetter
 }
 
 type Client struct {
@@ -178,6 +114,7 @@ type Client struct {
 	templateContentControllers                         map[string]TemplateContentController
 	groupControllers                                   map[string]GroupController
 	groupMemberControllers                             map[string]GroupMemberController
+	samlTokenControllers                               map[string]SamlTokenController
 	principalControllers                               map[string]PrincipalController
 	userControllers                                    map[string]UserController
 	authConfigControllers                              map[string]AuthConfigController
@@ -189,11 +126,11 @@ type Client struct {
 	projectNetworkPolicyControllers                    map[string]ProjectNetworkPolicyController
 	clusterLoggingControllers                          map[string]ClusterLoggingController
 	projectLoggingControllers                          map[string]ProjectLoggingController
-	listenConfigControllers                            map[string]ListenConfigController
 	settingControllers                                 map[string]SettingController
 	featureControllers                                 map[string]FeatureController
 	clusterAlertControllers                            map[string]ClusterAlertController
 	projectAlertControllers                            map[string]ProjectAlertController
+	notificationTemplateControllers                    map[string]NotificationTemplateController
 	notifierControllers                                map[string]NotifierController
 	clusterAlertGroupControllers                       map[string]ClusterAlertGroupController
 	projectAlertGroupControllers                       map[string]ProjectAlertGroupController
@@ -218,228 +155,8 @@ type Client struct {
 	rkeK8sSystemImageControllers                       map[string]RKEK8sSystemImageController
 	rkeK8sServiceOptionControllers                     map[string]RKEK8sServiceOptionController
 	rkeAddonControllers                                map[string]RKEAddonController
-}
-
-func Factory(ctx context.Context, config rest.Config) (context.Context, controller.Starter, error) {
-	c, err := NewForConfig(config)
-	if err != nil {
-		return ctx, nil, err
-	}
-
-	cs := NewClientsFromInterface(c)
-
-	ctx = context.WithValue(ctx, contextKeyType{}, c)
-	ctx = context.WithValue(ctx, contextClientsKeyType{}, cs)
-	return ctx, c, nil
-}
-
-func ClientsFrom(ctx context.Context) *Clients {
-	return ctx.Value(contextClientsKeyType{}).(*Clients)
-}
-
-func From(ctx context.Context) Interface {
-	return ctx.Value(contextKeyType{}).(Interface)
-}
-
-func NewClients(config rest.Config) (*Clients, error) {
-	iface, err := NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-	return NewClientsFromInterface(iface), nil
-}
-
-func NewClientsFromInterface(iface Interface) *Clients {
-	return &Clients{
-		Interface: iface,
-
-		NodePool: &nodePoolClient2{
-			iface: iface.NodePools(""),
-		},
-		Node: &nodeClient2{
-			iface: iface.Nodes(""),
-		},
-		NodeDriver: &nodeDriverClient2{
-			iface: iface.NodeDrivers(""),
-		},
-		NodeTemplate: &nodeTemplateClient2{
-			iface: iface.NodeTemplates(""),
-		},
-		Project: &projectClient2{
-			iface: iface.Projects(""),
-		},
-		GlobalRole: &globalRoleClient2{
-			iface: iface.GlobalRoles(""),
-		},
-		GlobalRoleBinding: &globalRoleBindingClient2{
-			iface: iface.GlobalRoleBindings(""),
-		},
-		RoleTemplate: &roleTemplateClient2{
-			iface: iface.RoleTemplates(""),
-		},
-		PodSecurityPolicyTemplate: &podSecurityPolicyTemplateClient2{
-			iface: iface.PodSecurityPolicyTemplates(""),
-		},
-		PodSecurityPolicyTemplateProjectBinding: &podSecurityPolicyTemplateProjectBindingClient2{
-			iface: iface.PodSecurityPolicyTemplateProjectBindings(""),
-		},
-		ClusterRoleTemplateBinding: &clusterRoleTemplateBindingClient2{
-			iface: iface.ClusterRoleTemplateBindings(""),
-		},
-		ProjectRoleTemplateBinding: &projectRoleTemplateBindingClient2{
-			iface: iface.ProjectRoleTemplateBindings(""),
-		},
-		Cluster: &clusterClient2{
-			iface: iface.Clusters(""),
-		},
-		ClusterRegistrationToken: &clusterRegistrationTokenClient2{
-			iface: iface.ClusterRegistrationTokens(""),
-		},
-		Catalog: &catalogClient2{
-			iface: iface.Catalogs(""),
-		},
-		Template: &templateClient2{
-			iface: iface.Templates(""),
-		},
-		CatalogTemplate: &catalogTemplateClient2{
-			iface: iface.CatalogTemplates(""),
-		},
-		CatalogTemplateVersion: &catalogTemplateVersionClient2{
-			iface: iface.CatalogTemplateVersions(""),
-		},
-		TemplateVersion: &templateVersionClient2{
-			iface: iface.TemplateVersions(""),
-		},
-		TemplateContent: &templateContentClient2{
-			iface: iface.TemplateContents(""),
-		},
-		Group: &groupClient2{
-			iface: iface.Groups(""),
-		},
-		GroupMember: &groupMemberClient2{
-			iface: iface.GroupMembers(""),
-		},
-		Principal: &principalClient2{
-			iface: iface.Principals(""),
-		},
-		User: &userClient2{
-			iface: iface.Users(""),
-		},
-		AuthConfig: &authConfigClient2{
-			iface: iface.AuthConfigs(""),
-		},
-		LdapConfig: &ldapConfigClient2{
-			iface: iface.LdapConfigs(""),
-		},
-		Token: &tokenClient2{
-			iface: iface.Tokens(""),
-		},
-		DynamicSchema: &dynamicSchemaClient2{
-			iface: iface.DynamicSchemas(""),
-		},
-		Preference: &preferenceClient2{
-			iface: iface.Preferences(""),
-		},
-		UserAttribute: &userAttributeClient2{
-			iface: iface.UserAttributes(""),
-		},
-		ProjectNetworkPolicy: &projectNetworkPolicyClient2{
-			iface: iface.ProjectNetworkPolicies(""),
-		},
-		ClusterLogging: &clusterLoggingClient2{
-			iface: iface.ClusterLoggings(""),
-		},
-		ProjectLogging: &projectLoggingClient2{
-			iface: iface.ProjectLoggings(""),
-		},
-		ListenConfig: &listenConfigClient2{
-			iface: iface.ListenConfigs(""),
-		},
-		Setting: &settingClient2{
-			iface: iface.Settings(""),
-		},
-		Feature: &featureClient2{
-			iface: iface.Features(""),
-		},
-		ClusterAlert: &clusterAlertClient2{
-			iface: iface.ClusterAlerts(""),
-		},
-		ProjectAlert: &projectAlertClient2{
-			iface: iface.ProjectAlerts(""),
-		},
-		Notifier: &notifierClient2{
-			iface: iface.Notifiers(""),
-		},
-		ClusterAlertGroup: &clusterAlertGroupClient2{
-			iface: iface.ClusterAlertGroups(""),
-		},
-		ProjectAlertGroup: &projectAlertGroupClient2{
-			iface: iface.ProjectAlertGroups(""),
-		},
-		ClusterAlertRule: &clusterAlertRuleClient2{
-			iface: iface.ClusterAlertRules(""),
-		},
-		ProjectAlertRule: &projectAlertRuleClient2{
-			iface: iface.ProjectAlertRules(""),
-		},
-		ComposeConfig: &composeConfigClient2{
-			iface: iface.ComposeConfigs(""),
-		},
-		ProjectCatalog: &projectCatalogClient2{
-			iface: iface.ProjectCatalogs(""),
-		},
-		ClusterCatalog: &clusterCatalogClient2{
-			iface: iface.ClusterCatalogs(""),
-		},
-		MultiClusterApp: &multiClusterAppClient2{
-			iface: iface.MultiClusterApps(""),
-		},
-		MultiClusterAppRevision: &multiClusterAppRevisionClient2{
-			iface: iface.MultiClusterAppRevisions(""),
-		},
-		GlobalDNS: &globalDnsClient2{
-			iface: iface.GlobalDNSs(""),
-		},
-		GlobalDNSProvider: &globalDnsProviderClient2{
-			iface: iface.GlobalDNSProviders(""),
-		},
-		KontainerDriver: &kontainerDriverClient2{
-			iface: iface.KontainerDrivers(""),
-		},
-		EtcdBackup: &etcdBackupClient2{
-			iface: iface.EtcdBackups(""),
-		},
-		ClusterScan: &clusterScanClient2{
-			iface: iface.ClusterScans(""),
-		},
-		MonitorMetric: &monitorMetricClient2{
-			iface: iface.MonitorMetrics(""),
-		},
-		ClusterMonitorGraph: &clusterMonitorGraphClient2{
-			iface: iface.ClusterMonitorGraphs(""),
-		},
-		ProjectMonitorGraph: &projectMonitorGraphClient2{
-			iface: iface.ProjectMonitorGraphs(""),
-		},
-		CloudCredential: &cloudCredentialClient2{
-			iface: iface.CloudCredentials(""),
-		},
-		ClusterTemplate: &clusterTemplateClient2{
-			iface: iface.ClusterTemplates(""),
-		},
-		ClusterTemplateRevision: &clusterTemplateRevisionClient2{
-			iface: iface.ClusterTemplateRevisions(""),
-		},
-		RKEK8sSystemImage: &rkeK8sSystemImageClient2{
-			iface: iface.RKEK8sSystemImages(""),
-		},
-		RKEK8sServiceOption: &rkeK8sServiceOptionClient2{
-			iface: iface.RKEK8sServiceOptions(""),
-		},
-		RKEAddon: &rkeAddonClient2{
-			iface: iface.RKEAddons(""),
-		},
-	}
+	cisConfigControllers                               map[string]CisConfigController
+	cisBenchmarkVersionControllers                     map[string]CisBenchmarkVersionController
 }
 
 func NewForConfig(config rest.Config) (Interface, error) {
@@ -477,6 +194,7 @@ func NewForConfig(config rest.Config) (Interface, error) {
 		templateContentControllers:                         map[string]TemplateContentController{},
 		groupControllers:                                   map[string]GroupController{},
 		groupMemberControllers:                             map[string]GroupMemberController{},
+		samlTokenControllers:                               map[string]SamlTokenController{},
 		principalControllers:                               map[string]PrincipalController{},
 		userControllers:                                    map[string]UserController{},
 		authConfigControllers:                              map[string]AuthConfigController{},
@@ -488,11 +206,11 @@ func NewForConfig(config rest.Config) (Interface, error) {
 		projectNetworkPolicyControllers:                    map[string]ProjectNetworkPolicyController{},
 		clusterLoggingControllers:                          map[string]ClusterLoggingController{},
 		projectLoggingControllers:                          map[string]ProjectLoggingController{},
-		listenConfigControllers:                            map[string]ListenConfigController{},
 		settingControllers:                                 map[string]SettingController{},
 		featureControllers:                                 map[string]FeatureController{},
 		clusterAlertControllers:                            map[string]ClusterAlertController{},
 		projectAlertControllers:                            map[string]ProjectAlertController{},
+		notificationTemplateControllers:                    map[string]NotificationTemplateController{},
 		notifierControllers:                                map[string]NotifierController{},
 		clusterAlertGroupControllers:                       map[string]ClusterAlertGroupController{},
 		projectAlertGroupControllers:                       map[string]ProjectAlertGroupController{},
@@ -517,6 +235,8 @@ func NewForConfig(config rest.Config) (Interface, error) {
 		rkeK8sSystemImageControllers:                       map[string]RKEK8sSystemImageController{},
 		rkeK8sServiceOptionControllers:                     map[string]RKEK8sServiceOptionController{},
 		rkeAddonControllers:                                map[string]RKEAddonController{},
+		cisConfigControllers:                               map[string]CisConfigController{},
+		cisBenchmarkVersionControllers:                     map[string]CisBenchmarkVersionController{},
 	}, nil
 }
 
@@ -818,6 +538,19 @@ func (c *Client) GroupMembers(namespace string) GroupMemberInterface {
 	}
 }
 
+type SamlTokensGetter interface {
+	SamlTokens(namespace string) SamlTokenInterface
+}
+
+func (c *Client) SamlTokens(namespace string) SamlTokenInterface {
+	objectClient := objectclient.NewObjectClient(namespace, c.restClient, &SamlTokenResource, SamlTokenGroupVersionKind, samlTokenFactory{})
+	return &samlTokenClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
 type PrincipalsGetter interface {
 	Principals(namespace string) PrincipalInterface
 }
@@ -961,19 +694,6 @@ func (c *Client) ProjectLoggings(namespace string) ProjectLoggingInterface {
 	}
 }
 
-type ListenConfigsGetter interface {
-	ListenConfigs(namespace string) ListenConfigInterface
-}
-
-func (c *Client) ListenConfigs(namespace string) ListenConfigInterface {
-	objectClient := objectclient.NewObjectClient(namespace, c.restClient, &ListenConfigResource, ListenConfigGroupVersionKind, listenConfigFactory{})
-	return &listenConfigClient{
-		ns:           namespace,
-		client:       c,
-		objectClient: objectClient,
-	}
-}
-
 type SettingsGetter interface {
 	Settings(namespace string) SettingInterface
 }
@@ -1020,6 +740,19 @@ type ProjectAlertsGetter interface {
 func (c *Client) ProjectAlerts(namespace string) ProjectAlertInterface {
 	objectClient := objectclient.NewObjectClient(namespace, c.restClient, &ProjectAlertResource, ProjectAlertGroupVersionKind, projectAlertFactory{})
 	return &projectAlertClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
+type NotificationTemplatesGetter interface {
+	NotificationTemplates(namespace string) NotificationTemplateInterface
+}
+
+func (c *Client) NotificationTemplates(namespace string) NotificationTemplateInterface {
+	objectClient := objectclient.NewObjectClient(namespace, c.restClient, &NotificationTemplateResource, NotificationTemplateGroupVersionKind, notificationTemplateFactory{})
+	return &notificationTemplateClient{
 		ns:           namespace,
 		client:       c,
 		objectClient: objectClient,
@@ -1332,6 +1065,32 @@ type RKEAddonsGetter interface {
 func (c *Client) RKEAddons(namespace string) RKEAddonInterface {
 	objectClient := objectclient.NewObjectClient(namespace, c.restClient, &RKEAddonResource, RKEAddonGroupVersionKind, rkeAddonFactory{})
 	return &rkeAddonClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
+type CisConfigsGetter interface {
+	CisConfigs(namespace string) CisConfigInterface
+}
+
+func (c *Client) CisConfigs(namespace string) CisConfigInterface {
+	objectClient := objectclient.NewObjectClient(namespace, c.restClient, &CisConfigResource, CisConfigGroupVersionKind, cisConfigFactory{})
+	return &cisConfigClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
+type CisBenchmarkVersionsGetter interface {
+	CisBenchmarkVersions(namespace string) CisBenchmarkVersionInterface
+}
+
+func (c *Client) CisBenchmarkVersions(namespace string) CisBenchmarkVersionInterface {
+	objectClient := objectclient.NewObjectClient(namespace, c.restClient, &CisBenchmarkVersionResource, CisBenchmarkVersionGroupVersionKind, cisBenchmarkVersionFactory{})
+	return &cisBenchmarkVersionClient{
 		ns:           namespace,
 		client:       c,
 		objectClient: objectClient,

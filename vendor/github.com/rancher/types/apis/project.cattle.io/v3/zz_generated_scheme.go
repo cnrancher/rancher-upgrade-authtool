@@ -74,6 +74,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&PipelineSettingList{},
 		&SourceCodeRepository{},
 		&SourceCodeRepositoryList{},
+		&CloneApp{},
+		&CloneAppList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

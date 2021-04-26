@@ -75,7 +75,7 @@ func GetDNAndScopeFromPrincipalID(principalID string) (string, string, error) {
 	return externalID, scope, nil
 }
 
-func NewLDAPConn(servers []string, TLS bool, port int64, connectionTimeout int64, caPool *x509.CertPool) (*ldapv2.Conn, error) {
+func NewLDAPConn(servers []string, TLS, startTLS bool, port int64, connectionTimeout int64, caPool *x509.CertPool) (*ldapv2.Conn, error) {
 	var lConn *ldapv2.Conn
 	var err error
 	var tlsConfig *tls.Config
@@ -85,11 +85,19 @@ func NewLDAPConn(servers []string, TLS bool, port int64, connectionTimeout int64
 		return nil, errors.New("invalid server config. only exactly 1 server is currently supported")
 	}
 	server := servers[0]
+	tlsConfig = &tls.Config{RootCAs: caPool, InsecureSkipVerify: false, ServerName: server}
 	if TLS {
-		tlsConfig = &tls.Config{RootCAs: caPool, InsecureSkipVerify: false, ServerName: server}
 		lConn, err = ldapv2.DialTLS("tcp", fmt.Sprintf("%s:%d", server, port), tlsConfig)
 		if err != nil {
 			return nil, fmt.Errorf("Error creating ssl connection: %v", err)
+		}
+	} else if startTLS {
+		lConn, err = ldapv2.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
+		if err != nil {
+			return nil, fmt.Errorf("Error creating connection for startTLS: %v", err)
+		}
+		if err := lConn.StartTLS(tlsConfig); err != nil {
+			return nil, fmt.Errorf("Error upgrading startTLS connection: %v", err)
 		}
 	} else {
 		lConn, err = ldapv2.Dial("tcp", fmt.Sprintf("%s:%d", server, port))

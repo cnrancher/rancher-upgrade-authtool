@@ -32,6 +32,7 @@ const (
 	LdapConfigFieldServers                         = "servers"
 	LdapConfigFieldServiceAccountDistinguishedName = "serviceAccountDistinguishedName"
 	LdapConfigFieldServiceAccountPassword          = "serviceAccountPassword"
+	LdapConfigFieldStartTLS                        = "starttls"
 	LdapConfigFieldTLS                             = "tls"
 	LdapConfigFieldType                            = "type"
 	LdapConfigFieldUUID                            = "uuid"
@@ -75,6 +76,7 @@ type LdapConfig struct {
 	Servers                         []string          `json:"servers,omitempty" yaml:"servers,omitempty"`
 	ServiceAccountDistinguishedName string            `json:"serviceAccountDistinguishedName,omitempty" yaml:"serviceAccountDistinguishedName,omitempty"`
 	ServiceAccountPassword          string            `json:"serviceAccountPassword,omitempty" yaml:"serviceAccountPassword,omitempty"`
+	StartTLS                        bool              `json:"starttls,omitempty" yaml:"starttls,omitempty"`
 	TLS                             bool              `json:"tls,omitempty" yaml:"tls,omitempty"`
 	Type                            string            `json:"type,omitempty" yaml:"type,omitempty"`
 	UUID                            string            `json:"uuid,omitempty" yaml:"uuid,omitempty"`
@@ -102,6 +104,7 @@ type LdapConfigClient struct {
 
 type LdapConfigOperations interface {
 	List(opts *types.ListOpts) (*LdapConfigCollection, error)
+	ListAll(opts *types.ListOpts) (*LdapConfigCollection, error)
 	Create(opts *LdapConfig) (*LdapConfig, error)
 	Update(existing *LdapConfig, updates interface{}) (*LdapConfig, error)
 	Replace(existing *LdapConfig) (*LdapConfig, error)
@@ -137,6 +140,24 @@ func (c *LdapConfigClient) List(opts *types.ListOpts) (*LdapConfigCollection, er
 	resp := &LdapConfigCollection{}
 	err := c.apiClient.Ops.DoList(LdapConfigType, opts, resp)
 	resp.client = c
+	return resp, err
+}
+
+func (c *LdapConfigClient) ListAll(opts *types.ListOpts) (*LdapConfigCollection, error) {
+	resp := &LdapConfigCollection{}
+	resp, err := c.List(opts)
+	if err != nil {
+		return resp, err
+	}
+	data := resp.Data
+	for next, err := resp.Next(); next != nil && err == nil; next, err = next.Next() {
+		data = append(data, next.Data...)
+		resp = next
+		resp.Data = data
+	}
+	if err != nil {
+		return resp, err
+	}
 	return resp, err
 }
 

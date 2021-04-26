@@ -68,7 +68,7 @@ func Upgrade(c *Config) error {
 			return err
 		}
 		logrus.Infof("Get Active Directory Auth config: %++v", *authConfig)
-		lConn, err = NewLDAPConn(authConfig.Servers, authConfig.TLS, authConfig.Port, authConfig.ConnectionTimeout, caPool)
+		lConn, err = NewLDAPConn(authConfig.Servers, authConfig.TLS, authConfig.StartTLS, authConfig.Port, authConfig.ConnectionTimeout, caPool)
 		if err != nil {
 			return err
 		}
@@ -97,7 +97,7 @@ func Upgrade(c *Config) error {
 			return err
 		}
 		logrus.Infof("Get OpenLDAP Auth config: %++v", *ldapConfig)
-		lConn, err = NewLDAPConn(ldapConfig.Servers, ldapConfig.TLS, ldapConfig.Port, ldapConfig.ConnectionTimeout, caPool)
+		lConn, err = NewLDAPConn(ldapConfig.Servers, ldapConfig.TLS, ldapConfig.StartTLS, ldapConfig.Port, ldapConfig.ConnectionTimeout, caPool)
 		if err != nil {
 			return err
 		}
@@ -129,6 +129,19 @@ func Upgrade(c *Config) error {
 	if groupSearchDN == "" {
 		groupSearchDN = baseDN
 	}
+
+	grbList, err := management.GlobalRoleBindings("").List(metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	beforeUpdateGRB := []v3.GlobalRoleBinding{}
+	for _, grb := range grbList.Items {
+		if grb.GroupPrincipalName != "" && strings.HasPrefix(grb.GroupPrincipalName, groupScopeType) {
+			beforeUpdateGRB = append(beforeUpdateGRB, grb)
+		}
+	}
+	logrus.Infof("find %d global role bindings to update for group principal", len(beforeUpdateGRB))
+
 	crtbList, err := management.ClusterRoleTemplateBindings("").List(metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -160,7 +173,7 @@ func Upgrade(c *Config) error {
 	preparedUsers, failedUsers := prepareUsers(beforeUpdate, lConn, userScopeType, c.AuthConfigType,
 		objectFilter, uidAttribute, searchAttribute)
 
-	preparedCRTB, failedCRTB, preparedPRTB, failedPRTB := preparePermissions(beforeUpdateCRTB, beforeUpdatePRTB,
+	preparedCRTB, failedCRTB, preparedPRTB, failedPRTB, preparedGRB, failedGRB  := preparePermissions(beforeUpdateCRTB, beforeUpdatePRTB, beforeUpdateGRB,
 		lConn, groupScopeType, userScopeType, groupFilter,
 		objectFilter, gidAttribute, uidAttribute, groupSearchAttribute, searchAttribute)
 
@@ -177,6 +190,20 @@ func Upgrade(c *Config) error {
 	preparedPRTB = append(preparedPRTB, newPRTB...)
 
 	logrus.Println("Step 4. Sync cluster permission with unique attribute id")
+	logrus.Infof("RESULT:: Will update %d grb", len(preparedGRB))
+	for _, grb := range preparedGRB {
+		if !c.IsDryRun {
+			_, err = management.GlobalRoleBindings("").Update(&grb)
+			if err != nil {
+				logrus.Errorf("failed to update grb %s, with error: %v", grb.Name, err)
+				logrus.Infof("failed grb is: %++v", grb)
+				continue
+			}
+		} else {
+			logrus.Infof("Update GRB %s, with group principal %s", grb.Name, grb.GroupPrincipalName)
+		}
+	}
+
 	logrus.Infof("RESULT:: Will update %d crtb", len(preparedCRTB))
 	for _, crtb := range preparedCRTB {
 		if !c.IsDryRun {
@@ -236,6 +263,10 @@ func Upgrade(c *Config) error {
 
 	for _, manuprtb := range manualPRTB {
 		logrus.Warnf("Find multiple results or not exist principal for prtb %s, ns %s, please manual check dn or remove permission", manuprtb.Name, manuprtb.Namespace)
+	}
+
+	for _, manugrb := range failedGRB {
+		logrus.Warnf("please manual check global role binding permission %v", manugrb.Name)
 	}
 
 	return nil
@@ -375,11 +406,11 @@ func getUniqueAttribute(entry *ldapv2.Entry, scopeType, scope, uniqueAttribute s
 	return principalIDOfDN, principalOfUID, uniqueID
 }
 
-func preparePermissions(beforeCRTB []v3.ClusterRoleTemplateBinding, beforePRTB []v3.ProjectRoleTemplateBinding,
+func preparePermissions(beforeCRTB []v3.ClusterRoleTemplateBinding, beforePRTB []v3.ProjectRoleTemplateBinding, beforeGRB []v3.GlobalRoleBinding,
 	lConn *ldapv2.Conn, groupScopeType, userScopeType, groupFilter, objectFilter,
 	gidAttribute, uidAttribute string, groupSearchAttribute, searchAttribute []string) (preparedCRTB []v3.ClusterRoleTemplateBinding,
 	failedCRTB []v3.ClusterRoleTemplateBinding, preparedPRTB []v3.ProjectRoleTemplateBinding,
-	failedPRTB []v3.ProjectRoleTemplateBinding) {
+	failedPRTB []v3.ProjectRoleTemplateBinding, preparedGRB []v3.GlobalRoleBinding, failedGRB []v3.GlobalRoleBinding) {
 
 	preparedCRTB = []v3.ClusterRoleTemplateBinding{}
 	failedCRTB = []v3.ClusterRoleTemplateBinding{}
@@ -455,7 +486,27 @@ func preparePermissions(beforeCRTB []v3.ClusterRoleTemplateBinding, beforePRTB [
 		preparedPRTB = append(preparedPRTB, prtb)
 	}
 
-	return preparedCRTB, failedCRTB, preparedPRTB, failedPRTB
+	preparedGRB = []v3.GlobalRoleBinding{}
+	failedGRB = []v3.GlobalRoleBinding{}
+	for _, grb := range beforeGRB {
+		if grb.GroupPrincipalName != "" && strings.HasPrefix(grb.GroupPrincipalName, groupScopeType) {
+			principalID := grb.GroupPrincipalName
+			_, principalUID, _, err := generateNewPrincipalByDN(lConn, principalID, groupScopeType, groupFilter, gidAttribute, groupSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identies found using current principalID: %s for grb %s", principalID, grb.Name)
+					failedGRB = append(failedGRB, grb)
+				} else {
+					logrus.Errorf("failed to get group using principalID %s for grb %s, err: %v", principalID, grb.Name, err)
+				}
+				continue
+			}
+			grb.GroupPrincipalName = principalUID
+			preparedGRB = append(preparedGRB, grb)
+		}
+	}
+
+	return preparedCRTB, failedCRTB, preparedPRTB, failedPRTB, preparedGRB, failedGRB
 }
 
 func prepareDNChangedUsers(failedUsers map[string]v3.User, preparedUsers map[string]v3.User,

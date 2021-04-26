@@ -3,6 +3,7 @@ package v3
 import (
 	"bytes"
 	"encoding/gob"
+	"strings"
 
 	"github.com/rancher/norman/condition"
 	"github.com/rancher/norman/types"
@@ -30,7 +31,7 @@ const (
 	ClusterActionBackupEtcd            = "backupEtcd"
 	ClusterActionRestoreFromEtcdBackup = "restoreFromEtcdBackup"
 	ClusterActionRotateCertificates    = "rotateCertificates"
-	ClusterActionRunCISScan            = "runSecurityScan"
+	ClusterActionRunSecurityScan       = "runSecurityScan"
 	ClusterActionSaveAsTemplate        = "saveAsTemplate"
 
 	// ClusterConditionReady Cluster ready to serve API (healthy when true, unhealthy when false)
@@ -40,6 +41,7 @@ const (
 	ClusterConditionEtcd           condition.Cond = "etcd"
 	ClusterConditionProvisioned    condition.Cond = "Provisioned"
 	ClusterConditionUpdated        condition.Cond = "Updated"
+	ClusterConditionUpgraded       condition.Cond = "Upgraded"
 	ClusterConditionWaiting        condition.Cond = "Waiting"
 	ClusterConditionRemoved        condition.Cond = "Removed"
 	// ClusterConditionNoDiskPressure true when all cluster nodes have sufficient disk
@@ -65,14 +67,18 @@ const (
 	ClusterConditionMonitoringEnabled          condition.Cond = "MonitoringEnabled"
 	ClusterConditionAlertingEnabled            condition.Cond = "AlertingEnabled"
 	ClusterConditionGPUManagementEnabled       condition.Cond = "GPUManagementEnabled"
+	ClusterConditionDualStackEnabled           condition.Cond = "DualStackEnabled"
 
 	ClusterDriverImported = "imported"
 	ClusterDriverLocal    = "local"
 	ClusterDriverRKE      = "rancherKubernetesEngine"
-	ClusterDriverGKE      = "googleKubernetesEngine"
-	ClusterDriverEKS      = "amazonElasticContainerService"
-	ClusterDriverAKS      = "azureKubernetesService"
+	ClusterDriverK3s      = "k3s"
+	ClusterDriverK3os     = "k3os"
 )
+
+// +genclient
+// +genclient:nonNamespaced
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type Cluster struct {
 	metav1.TypeMeta `json:",inline"`
@@ -95,6 +101,7 @@ type ClusterSpecBase struct {
 	DefaultPodSecurityPolicyTemplateName string                         `json:"defaultPodSecurityPolicyTemplateName,omitempty" norman:"type=reference[podSecurityPolicyTemplate]"`
 	DefaultClusterRoleForProjectMembers  string                         `json:"defaultClusterRoleForProjectMembers,omitempty" norman:"type=reference[roleTemplate]"`
 	DockerRootDir                        string                         `json:"dockerRootDir,omitempty" norman:"default=/var/lib/docker"`
+	FluentdLogDir                        string                         `json:"fluentdLogDir,omitempty" norman:"default=/var/lib/rancher/fluentd/log"`
 	EnableNetworkPolicy                  *bool                          `json:"enableNetworkPolicy" norman:"default=false"`
 	EnableClusterAlerting                bool                           `json:"enableClusterAlerting" norman:"default=false"`
 	EnableClusterMonitoring              bool                           `json:"enableClusterMonitoring" norman:"default=false"`
@@ -102,6 +109,9 @@ type ClusterSpecBase struct {
 	LocalClusterAuthEndpoint             LocalClusterAuthEndpoint       `json:"localClusterAuthEndpoint,omitempty"`
 	EnableGPUManagement                  bool                           `json:"enableGPUManagement" norman:"default=false"`
 	GPUSchedulerNodePort                 string                         `json:"gpuSchedulerNodePort" norman:"default=32666"`
+	SystemDefaultRegistry                string                         `json:"systemDefaultRegistry,omitempty"`        // PANDARIA
+	EnableDualStack                      bool                           `json:"enableDualStack" norman:"default=false"` // PANDARIA
+	ScheduledClusterScan                 *ScheduledClusterScan          `json:"scheduledClusterScan,omitempty"`
 }
 
 type ClusterSpec struct {
@@ -109,6 +119,7 @@ type ClusterSpec struct {
 	DisplayName                         string              `json:"displayName" norman:"required"`
 	Description                         string              `json:"description"`
 	Internal                            bool                `json:"internal" norman:"nocreate,noupdate"`
+	K3sConfig                           *K3sConfig          `json:"k3sConfig,omitempty"`
 	ImportedConfig                      *ImportedConfig     `json:"importedConfig,omitempty" norman:"nocreate,noupdate"`
 	GoogleKubernetesEngineConfig        *MapStringInterface `json:"googleKubernetesEngineConfig,omitempty"`
 	AzureKubernetesServiceConfig        *MapStringInterface `json:"azureKubernetesServiceConfig,omitempty"`
@@ -130,26 +141,31 @@ type ClusterStatus struct {
 	Conditions []ClusterCondition `json:"conditions,omitempty"`
 	// Component statuses will represent cluster's components (etcd/controller/scheduler) health
 	// https://kubernetes.io/docs/api-reference/v1.8/#componentstatus-v1-core
-	Driver                               string                    `json:"driver"`
-	AgentImage                           string                    `json:"agentImage"`
-	AuthImage                            string                    `json:"authImage"`
-	ComponentStatuses                    []ClusterComponentStatus  `json:"componentStatuses,omitempty"`
-	APIEndpoint                          string                    `json:"apiEndpoint,omitempty"`
-	ServiceAccountToken                  string                    `json:"serviceAccountToken,omitempty"`
-	CACert                               string                    `json:"caCert,omitempty"`
-	Capacity                             v1.ResourceList           `json:"capacity,omitempty"`
-	Allocatable                          v1.ResourceList           `json:"allocatable,omitempty"`
-	AppliedSpec                          ClusterSpec               `json:"appliedSpec,omitempty"`
-	FailedSpec                           *ClusterSpec              `json:"failedSpec,omitempty"`
-	Requested                            v1.ResourceList           `json:"requested,omitempty"`
-	Limits                               v1.ResourceList           `json:"limits,omitempty"`
-	Version                              *version.Info             `json:"version,omitempty"`
-	AppliedPodSecurityPolicyTemplateName string                    `json:"appliedPodSecurityPolicyTemplateId"`
-	AppliedEnableNetworkPolicy           bool                      `json:"appliedEnableNetworkPolicy" norman:"nocreate,noupdate,default=false"`
-	Capabilities                         Capabilities              `json:"capabilities,omitempty"`
-	MonitoringStatus                     *MonitoringStatus         `json:"monitoringStatus,omitempty" norman:"nocreate,noupdate"`
-	IstioEnabled                         bool                      `json:"istioEnabled,omitempty" norman:"nocreate,noupdate,default=false"`
-	CertificatesExpiration               map[string]CertExpiration `json:"certificatesExpiration,omitempty"`
+	Driver                               string                      `json:"driver"`
+	AgentImage                           string                      `json:"agentImage"`
+	AgentFeatures                        map[string]bool             `json:"agentFeatures,omitempty"`
+	AuthImage                            string                      `json:"authImage"`
+	ComponentStatuses                    []ClusterComponentStatus    `json:"componentStatuses,omitempty"`
+	APIEndpoint                          string                      `json:"apiEndpoint,omitempty"`
+	ServiceAccountToken                  string                      `json:"serviceAccountToken,omitempty"`
+	CACert                               string                      `json:"caCert,omitempty"`
+	Capacity                             v1.ResourceList             `json:"capacity,omitempty"`
+	Allocatable                          v1.ResourceList             `json:"allocatable,omitempty"`
+	AppliedSpec                          ClusterSpec                 `json:"appliedSpec,omitempty"`
+	FailedSpec                           *ClusterSpec                `json:"failedSpec,omitempty"`
+	Requested                            v1.ResourceList             `json:"requested,omitempty"`
+	Limits                               v1.ResourceList             `json:"limits,omitempty"`
+	Version                              *version.Info               `json:"version,omitempty"`
+	AppliedPodSecurityPolicyTemplateName string                      `json:"appliedPodSecurityPolicyTemplateId"`
+	AppliedEnableNetworkPolicy           bool                        `json:"appliedEnableNetworkPolicy" norman:"nocreate,noupdate,default=false"`
+	Capabilities                         Capabilities                `json:"capabilities,omitempty"`
+	MonitoringStatus                     *MonitoringStatus           `json:"monitoringStatus,omitempty" norman:"nocreate,noupdate"`
+	NodeVersion                          int                         `json:"nodeVersion,omitempty"`
+	NodeCount                            int                         `json:"nodeCount,omitempty" norman:"nocreate,noupdate"`
+	IstioEnabled                         bool                        `json:"istioEnabled,omitempty" norman:"nocreate,noupdate,default=false"`
+	CertificatesExpiration               map[string]CertExpiration   `json:"certificatesExpiration,omitempty"`
+	ScheduledClusterScanStatus           *ScheduledClusterScanStatus `json:"scheduledClusterScanStatus,omitempty"`
+	CurrentCisRunName                    string                      `json:"currentCisRunName,omitempty"`
 }
 
 type ClusterComponentStatus struct {
@@ -209,8 +225,16 @@ type ClusterRegistrationToken struct {
 	Status ClusterRegistrationTokenStatus `json:"status"`
 }
 
+func (c *ClusterRegistrationToken) ObjClusterName() string {
+	return c.Spec.ObjClusterName()
+}
+
 type ClusterRegistrationTokenSpec struct {
 	ClusterName string `json:"clusterName" norman:"required,type=reference[cluster]"`
+}
+
+func (c *ClusterRegistrationTokenSpec) ObjClusterName() string {
+	return c.ClusterName
 }
 
 type ClusterRegistrationTokenStatus struct {
@@ -235,6 +259,13 @@ type ImportClusterYamlInput struct {
 	DefaultNamespace string `json:"defaultNamespace,omitempty"`
 	Namespace        string `json:"namespace,omitempty"`
 	ProjectName      string `json:"projectName,omitempty" norman:"type=reference[project]"`
+}
+
+func (i *ImportClusterYamlInput) ObjClusterName() string {
+	if parts := strings.SplitN(i.ProjectName, ":", 2); len(parts) == 2 {
+		return parts[0]
+	}
+	return ""
 }
 
 type ImportYamlOutput struct {
@@ -263,17 +294,22 @@ type IngressCapabilities struct {
 }
 
 type MonitoringInput struct {
-	Version string            `json:"version,omitempty"`
-	Answers map[string]string `json:"answers,omitempty"`
+	Version      string            `json:"version,omitempty"`
+	Answers      map[string]string `json:"answers,omitempty"`
+	ValuesYaml   string            `json:"valuesYaml,omitempty"`
+	ExtraAnswers map[string]string `json:"extraAnswers,omitempty"`
 }
 
 type MonitoringOutput struct {
-	Version string            `json:"version,omitempty"`
-	Answers map[string]string `json:"answers,omitempty"`
+	Version      string            `json:"version,omitempty"`
+	Answers      map[string]string `json:"answers,omitempty"`
+	ValuesYaml   string            `json:"valuesYaml,omitempty"`
+	ExtraAnswers map[string]string `json:"extraAnswers,omitempty"`
 }
 
 type RestoreFromEtcdBackupInput struct {
-	EtcdBackupName string `json:"etcdBackupName,omitempty" norman:"type=reference[etcdBackup]"`
+	EtcdBackupName   string `json:"etcdBackupName,omitempty" norman:"type=reference[etcdBackup]"`
+	RestoreRkeConfig string `json:"restoreRkeConfig,omitempty"`
 }
 
 type RotateCertificateInput struct {

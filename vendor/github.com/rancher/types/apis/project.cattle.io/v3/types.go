@@ -114,7 +114,13 @@ type DeploymentRollbackInput struct {
 }
 
 type WorkloadMetric struct {
-	Port   int32  `json:"port,omitempty"`
-	Path   string `json:"path,omitempty"`
-	Schema string `json:"schema,omitempty" norman:"type=enum,options=HTTP|HTTPS"`
+	Port                        int32                         `json:"port,omitempty"`
+	Path                        string                        `json:"path,omitempty"`
+	Schema                      string                        `json:"schema,omitempty" norman:"type=enum,options=HTTP|HTTPS"`
+	WorkloadMetricRelabelConfig []WorkloadMetricRelabelConfig `json:"workloadMetricRelabelConfig,omitempty"`
+}
+
+type WorkloadMetricRelabelConfig struct {
+	Regex  string `json:"regex,omitempty"`
+	Action string `json:"action,omitempty" norman:"type=enum,options=labeldrop,default=labeldrop"` //will support more when user need
 }

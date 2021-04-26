@@ -5,57 +5,65 @@ import (
 )
 
 const (
-	ProjectLoggingType                       = "projectLogging"
-	ProjectLoggingFieldAnnotations           = "annotations"
-	ProjectLoggingFieldCreated               = "created"
-	ProjectLoggingFieldCreatorID             = "creatorId"
-	ProjectLoggingFieldCustomTargetConfig    = "customTargetConfig"
-	ProjectLoggingFieldElasticsearchConfig   = "elasticsearchConfig"
-	ProjectLoggingFieldEnableJSONParsing     = "enableJSONParsing"
-	ProjectLoggingFieldFluentForwarderConfig = "fluentForwarderConfig"
-	ProjectLoggingFieldKafkaConfig           = "kafkaConfig"
-	ProjectLoggingFieldLabels                = "labels"
-	ProjectLoggingFieldName                  = "name"
-	ProjectLoggingFieldNamespaceId           = "namespaceId"
-	ProjectLoggingFieldOutputFlushInterval   = "outputFlushInterval"
-	ProjectLoggingFieldOutputTags            = "outputTags"
-	ProjectLoggingFieldOwnerReferences       = "ownerReferences"
-	ProjectLoggingFieldProjectID             = "projectId"
-	ProjectLoggingFieldRemoved               = "removed"
-	ProjectLoggingFieldSplunkConfig          = "splunkConfig"
-	ProjectLoggingFieldState                 = "state"
-	ProjectLoggingFieldStatus                = "status"
-	ProjectLoggingFieldSyslogConfig          = "syslogConfig"
-	ProjectLoggingFieldTransitioning         = "transitioning"
-	ProjectLoggingFieldTransitioningMessage  = "transitioningMessage"
-	ProjectLoggingFieldUUID                  = "uuid"
+	ProjectLoggingType                           = "projectLogging"
+	ProjectLoggingFieldAnnotations               = "annotations"
+	ProjectLoggingFieldCreated                   = "created"
+	ProjectLoggingFieldCreatorID                 = "creatorId"
+	ProjectLoggingFieldCustomTargetConfig        = "customTargetConfig"
+	ProjectLoggingFieldElasticsearchConfig       = "elasticsearchConfig"
+	ProjectLoggingFieldEnableExceptionStackMatch = "enableExceptionStackMatch"
+	ProjectLoggingFieldEnableJSONParsing         = "enableJSONParsing"
+	ProjectLoggingFieldEnableMultiLineFilter     = "enableMultiLineFilter"
+	ProjectLoggingFieldFluentForwarderConfig     = "fluentForwarderConfig"
+	ProjectLoggingFieldKafkaConfig               = "kafkaConfig"
+	ProjectLoggingFieldLabels                    = "labels"
+	ProjectLoggingFieldMultiLineEndRegexp        = "multiLineEndRegexp"
+	ProjectLoggingFieldMultiLineStartRegexp      = "multiLineStartRegexp"
+	ProjectLoggingFieldName                      = "name"
+	ProjectLoggingFieldNamespaceId               = "namespaceId"
+	ProjectLoggingFieldOutputFlushInterval       = "outputFlushInterval"
+	ProjectLoggingFieldOutputTags                = "outputTags"
+	ProjectLoggingFieldOwnerReferences           = "ownerReferences"
+	ProjectLoggingFieldProjectID                 = "projectId"
+	ProjectLoggingFieldRemoved                   = "removed"
+	ProjectLoggingFieldSplunkConfig              = "splunkConfig"
+	ProjectLoggingFieldState                     = "state"
+	ProjectLoggingFieldStatus                    = "status"
+	ProjectLoggingFieldSyslogConfig              = "syslogConfig"
+	ProjectLoggingFieldTransitioning             = "transitioning"
+	ProjectLoggingFieldTransitioningMessage      = "transitioningMessage"
+	ProjectLoggingFieldUUID                      = "uuid"
 )
 
 type ProjectLogging struct {
 	types.Resource
-	Annotations           map[string]string      `json:"annotations,omitempty" yaml:"annotations,omitempty"`
-	Created               string                 `json:"created,omitempty" yaml:"created,omitempty"`
-	CreatorID             string                 `json:"creatorId,omitempty" yaml:"creatorId,omitempty"`
-	CustomTargetConfig    *CustomTargetConfig    `json:"customTargetConfig,omitempty" yaml:"customTargetConfig,omitempty"`
-	ElasticsearchConfig   *ElasticsearchConfig   `json:"elasticsearchConfig,omitempty" yaml:"elasticsearchConfig,omitempty"`
-	EnableJSONParsing     bool                   `json:"enableJSONParsing,omitempty" yaml:"enableJSONParsing,omitempty"`
-	FluentForwarderConfig *FluentForwarderConfig `json:"fluentForwarderConfig,omitempty" yaml:"fluentForwarderConfig,omitempty"`
-	KafkaConfig           *KafkaConfig           `json:"kafkaConfig,omitempty" yaml:"kafkaConfig,omitempty"`
-	Labels                map[string]string      `json:"labels,omitempty" yaml:"labels,omitempty"`
-	Name                  string                 `json:"name,omitempty" yaml:"name,omitempty"`
-	NamespaceId           string                 `json:"namespaceId,omitempty" yaml:"namespaceId,omitempty"`
-	OutputFlushInterval   int64                  `json:"outputFlushInterval,omitempty" yaml:"outputFlushInterval,omitempty"`
-	OutputTags            map[string]string      `json:"outputTags,omitempty" yaml:"outputTags,omitempty"`
-	OwnerReferences       []OwnerReference       `json:"ownerReferences,omitempty" yaml:"ownerReferences,omitempty"`
-	ProjectID             string                 `json:"projectId,omitempty" yaml:"projectId,omitempty"`
-	Removed               string                 `json:"removed,omitempty" yaml:"removed,omitempty"`
-	SplunkConfig          *SplunkConfig          `json:"splunkConfig,omitempty" yaml:"splunkConfig,omitempty"`
-	State                 string                 `json:"state,omitempty" yaml:"state,omitempty"`
-	Status                *ProjectLoggingStatus  `json:"status,omitempty" yaml:"status,omitempty"`
-	SyslogConfig          *SyslogConfig          `json:"syslogConfig,omitempty" yaml:"syslogConfig,omitempty"`
-	Transitioning         string                 `json:"transitioning,omitempty" yaml:"transitioning,omitempty"`
-	TransitioningMessage  string                 `json:"transitioningMessage,omitempty" yaml:"transitioningMessage,omitempty"`
-	UUID                  string                 `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+	Annotations               map[string]string      `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+	Created                   string                 `json:"created,omitempty" yaml:"created,omitempty"`
+	CreatorID                 string                 `json:"creatorId,omitempty" yaml:"creatorId,omitempty"`
+	CustomTargetConfig        *CustomTargetConfig    `json:"customTargetConfig,omitempty" yaml:"customTargetConfig,omitempty"`
+	ElasticsearchConfig       *ElasticsearchConfig   `json:"elasticsearchConfig,omitempty" yaml:"elasticsearchConfig,omitempty"`
+	EnableExceptionStackMatch bool                   `json:"enableExceptionStackMatch,omitempty" yaml:"enableExceptionStackMatch,omitempty"`
+	EnableJSONParsing         bool                   `json:"enableJSONParsing,omitempty" yaml:"enableJSONParsing,omitempty"`
+	EnableMultiLineFilter     bool                   `json:"enableMultiLineFilter,omitempty" yaml:"enableMultiLineFilter,omitempty"`
+	FluentForwarderConfig     *FluentForwarderConfig `json:"fluentForwarderConfig,omitempty" yaml:"fluentForwarderConfig,omitempty"`
+	KafkaConfig               *KafkaConfig           `json:"kafkaConfig,omitempty" yaml:"kafkaConfig,omitempty"`
+	Labels                    map[string]string      `json:"labels,omitempty" yaml:"labels,omitempty"`
+	MultiLineEndRegexp        string                 `json:"multiLineEndRegexp,omitempty" yaml:"multiLineEndRegexp,omitempty"`
+	MultiLineStartRegexp      string                 `json:"multiLineStartRegexp,omitempty" yaml:"multiLineStartRegexp,omitempty"`
+	Name                      string                 `json:"name,omitempty" yaml:"name,omitempty"`
+	NamespaceId               string                 `json:"namespaceId,omitempty" yaml:"namespaceId,omitempty"`
+	OutputFlushInterval       int64                  `json:"outputFlushInterval,omitempty" yaml:"outputFlushInterval,omitempty"`
+	OutputTags                map[string]string      `json:"outputTags,omitempty" yaml:"outputTags,omitempty"`
+	OwnerReferences           []OwnerReference       `json:"ownerReferences,omitempty" yaml:"ownerReferences,omitempty"`
+	ProjectID                 string                 `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	Removed                   string                 `json:"removed,omitempty" yaml:"removed,omitempty"`
+	SplunkConfig              *SplunkConfig          `json:"splunkConfig,omitempty" yaml:"splunkConfig,omitempty"`
+	State                     string                 `json:"state,omitempty" yaml:"state,omitempty"`
+	Status                    *ProjectLoggingStatus  `json:"status,omitempty" yaml:"status,omitempty"`
+	SyslogConfig              *SyslogConfig          `json:"syslogConfig,omitempty" yaml:"syslogConfig,omitempty"`
+	Transitioning             string                 `json:"transitioning,omitempty" yaml:"transitioning,omitempty"`
+	TransitioningMessage      string                 `json:"transitioningMessage,omitempty" yaml:"transitioningMessage,omitempty"`
+	UUID                      string                 `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 type ProjectLoggingCollection struct {
@@ -70,6 +78,7 @@ type ProjectLoggingClient struct {
 
 type ProjectLoggingOperations interface {
 	List(opts *types.ListOpts) (*ProjectLoggingCollection, error)
+	ListAll(opts *types.ListOpts) (*ProjectLoggingCollection, error)
 	Create(opts *ProjectLogging) (*ProjectLogging, error)
 	Update(existing *ProjectLogging, updates interface{}) (*ProjectLogging, error)
 	Replace(existing *ProjectLogging) (*ProjectLogging, error)
@@ -109,6 +118,24 @@ func (c *ProjectLoggingClient) List(opts *types.ListOpts) (*ProjectLoggingCollec
 	resp := &ProjectLoggingCollection{}
 	err := c.apiClient.Ops.DoList(ProjectLoggingType, opts, resp)
 	resp.client = c
+	return resp, err
+}
+
+func (c *ProjectLoggingClient) ListAll(opts *types.ListOpts) (*ProjectLoggingCollection, error) {
+	resp := &ProjectLoggingCollection{}
+	resp, err := c.List(opts)
+	if err != nil {
+		return resp, err
+	}
+	data := resp.Data
+	for next, err := resp.Next(); next != nil && err == nil; next, err = next.Next() {
+		data = append(data, next.Data...)
+		resp = next
+		resp.Data = data
+	}
+	if err != nil {
+		return resp, err
+	}
 	return resp, err
 }
 

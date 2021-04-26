@@ -65,7 +65,7 @@ func Rollback(c *Config) error {
 			return err
 		}
 		logrus.Infof("Get Active Directory Auth config: %++v", *authConfig)
-		lConn, err = NewLDAPConn(authConfig.Servers, authConfig.TLS, authConfig.Port, authConfig.ConnectionTimeout, caPool)
+		lConn, err = NewLDAPConn(authConfig.Servers, authConfig.TLS, authConfig.StartTLS, authConfig.Port, authConfig.ConnectionTimeout, caPool)
 		if err != nil {
 			return err
 		}
@@ -86,7 +86,7 @@ func Rollback(c *Config) error {
 			return err
 		}
 		logrus.Infof("Get OpenLDAP Auth config: %++v", *ldapConfig)
-		lConn, err = NewLDAPConn(ldapConfig.Servers, ldapConfig.TLS, ldapConfig.Port, ldapConfig.ConnectionTimeout, caPool)
+		lConn, err = NewLDAPConn(ldapConfig.Servers, ldapConfig.TLS, ldapConfig.StartTLS, ldapConfig.Port, ldapConfig.ConnectionTimeout, caPool)
 		if err != nil {
 			return err
 		}

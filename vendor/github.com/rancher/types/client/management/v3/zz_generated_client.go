@@ -29,6 +29,7 @@ type Client struct {
 	TemplateContent                         TemplateContentOperations
 	Group                                   GroupOperations
 	GroupMember                             GroupMemberOperations
+	SamlToken                               SamlTokenOperations
 	Principal                               PrincipalOperations
 	User                                    UserOperations
 	AuthConfig                              AuthConfigOperations
@@ -39,11 +40,11 @@ type Client struct {
 	ProjectNetworkPolicy                    ProjectNetworkPolicyOperations
 	ClusterLogging                          ClusterLoggingOperations
 	ProjectLogging                          ProjectLoggingOperations
-	ListenConfig                            ListenConfigOperations
 	Setting                                 SettingOperations
 	Feature                                 FeatureOperations
 	ClusterAlert                            ClusterAlertOperations
 	ProjectAlert                            ProjectAlertOperations
+	NotificationTemplate                    NotificationTemplateOperations
 	Notifier                                NotifierOperations
 	ClusterAlertGroup                       ClusterAlertGroupOperations
 	ProjectAlertGroup                       ProjectAlertGroupOperations
@@ -69,6 +70,8 @@ type Client struct {
 	RKEK8sSystemImage                       RKEK8sSystemImageOperations
 	RKEK8sServiceOption                     RKEK8sServiceOptionOperations
 	RKEAddon                                RKEAddonOperations
+	CisConfig                               CisConfigOperations
+	CisBenchmarkVersion                     CisBenchmarkVersionOperations
 }
 
 func NewClient(opts *clientbase.ClientOpts) (*Client, error) {
@@ -103,6 +106,7 @@ func NewClient(opts *clientbase.ClientOpts) (*Client, error) {
 	client.TemplateContent = newTemplateContentClient(client)
 	client.Group = newGroupClient(client)
 	client.GroupMember = newGroupMemberClient(client)
+	client.SamlToken = newSamlTokenClient(client)
 	client.Principal = newPrincipalClient(client)
 	client.User = newUserClient(client)
 	client.AuthConfig = newAuthConfigClient(client)
@@ -113,11 +117,11 @@ func NewClient(opts *clientbase.ClientOpts) (*Client, error) {
 	client.ProjectNetworkPolicy = newProjectNetworkPolicyClient(client)
 	client.ClusterLogging = newClusterLoggingClient(client)
 	client.ProjectLogging = newProjectLoggingClient(client)
-	client.ListenConfig = newListenConfigClient(client)
 	client.Setting = newSettingClient(client)
 	client.Feature = newFeatureClient(client)
 	client.ClusterAlert = newClusterAlertClient(client)
 	client.ProjectAlert = newProjectAlertClient(client)
+	client.NotificationTemplate = newNotificationTemplateClient(client)
 	client.Notifier = newNotifierClient(client)
 	client.ClusterAlertGroup = newClusterAlertGroupClient(client)
 	client.ProjectAlertGroup = newProjectAlertGroupClient(client)
@@ -143,6 +147,8 @@ func NewClient(opts *clientbase.ClientOpts) (*Client, error) {
 	client.RKEK8sSystemImage = newRKEK8sSystemImageClient(client)
 	client.RKEK8sServiceOption = newRKEK8sServiceOptionClient(client)
 	client.RKEAddon = newRKEAddonClient(client)
+	client.CisConfig = newCisConfigClient(client)
+	client.CisBenchmarkVersion = newCisBenchmarkVersionClient(client)
 
 	return client, nil
 }

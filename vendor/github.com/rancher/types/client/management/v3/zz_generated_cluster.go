@@ -7,6 +7,7 @@ import (
 const (
 	ClusterType                                      = "cluster"
 	ClusterFieldAPIEndpoint                          = "apiEndpoint"
+	ClusterFieldAgentFeatures                        = "agentFeatures"
 	ClusterFieldAgentImage                           = "agentImage"
 	ClusterFieldAgentImageOverride                   = "agentImageOverride"
 	ClusterFieldAllocatable                          = "allocatable"
@@ -27,6 +28,7 @@ const (
 	ClusterFieldConditions                           = "conditions"
 	ClusterFieldCreated                              = "created"
 	ClusterFieldCreatorID                            = "creatorId"
+	ClusterFieldCurrentCisRunName                    = "currentCisRunName"
 	ClusterFieldDefaultClusterRoleForProjectMembers  = "defaultClusterRoleForProjectMembers"
 	ClusterFieldDefaultPodSecurityPolicyTemplateID   = "defaultPodSecurityPolicyTemplateId"
 	ClusterFieldDescription                          = "description"
@@ -36,23 +38,31 @@ const (
 	ClusterFieldDriver                               = "driver"
 	ClusterFieldEnableClusterAlerting                = "enableClusterAlerting"
 	ClusterFieldEnableClusterMonitoring              = "enableClusterMonitoring"
+	ClusterFieldEnableDualStack                      = "enableDualStack"
 	ClusterFieldEnableGPUManagement                  = "enableGPUManagement"
 	ClusterFieldEnableNetworkPolicy                  = "enableNetworkPolicy"
 	ClusterFieldFailedSpec                           = "failedSpec"
+	ClusterFieldFluentdLogDir                        = "fluentdLogDir"
 	ClusterFieldGPUSchedulerNodePort                 = "gpuSchedulerNodePort"
 	ClusterFieldImportedConfig                       = "importedConfig"
 	ClusterFieldInternal                             = "internal"
 	ClusterFieldIstioEnabled                         = "istioEnabled"
+	ClusterFieldK3sConfig                            = "k3sConfig"
 	ClusterFieldLabels                               = "labels"
 	ClusterFieldLimits                               = "limits"
 	ClusterFieldLocalClusterAuthEndpoint             = "localClusterAuthEndpoint"
 	ClusterFieldMonitoringStatus                     = "monitoringStatus"
 	ClusterFieldName                                 = "name"
+	ClusterFieldNodeCount                            = "nodeCount"
+	ClusterFieldNodeVersion                          = "nodeVersion"
 	ClusterFieldOwnerReferences                      = "ownerReferences"
 	ClusterFieldRancherKubernetesEngineConfig        = "rancherKubernetesEngineConfig"
 	ClusterFieldRemoved                              = "removed"
 	ClusterFieldRequested                            = "requested"
+	ClusterFieldScheduledClusterScan                 = "scheduledClusterScan"
+	ClusterFieldScheduledClusterScanStatus           = "scheduledClusterScanStatus"
 	ClusterFieldState                                = "state"
+	ClusterFieldSystemDefaultRegistry                = "systemDefaultRegistry"
 	ClusterFieldTransitioning                        = "transitioning"
 	ClusterFieldTransitioningMessage                 = "transitioningMessage"
 	ClusterFieldUUID                                 = "uuid"
@@ -63,6 +73,7 @@ const (
 type Cluster struct {
 	types.Resource
 	APIEndpoint                          string                         `json:"apiEndpoint,omitempty" yaml:"apiEndpoint,omitempty"`
+	AgentFeatures                        map[string]bool                `json:"agentFeatures,omitempty" yaml:"agentFeatures,omitempty"`
 	AgentImage                           string                         `json:"agentImage,omitempty" yaml:"agentImage,omitempty"`
 	AgentImageOverride                   string                         `json:"agentImageOverride,omitempty" yaml:"agentImageOverride,omitempty"`
 	Allocatable                          map[string]string              `json:"allocatable,omitempty" yaml:"allocatable,omitempty"`
@@ -83,6 +94,7 @@ type Cluster struct {
 	Conditions                           []ClusterCondition             `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 	Created                              string                         `json:"created,omitempty" yaml:"created,omitempty"`
 	CreatorID                            string                         `json:"creatorId,omitempty" yaml:"creatorId,omitempty"`
+	CurrentCisRunName                    string                         `json:"currentCisRunName,omitempty" yaml:"currentCisRunName,omitempty"`
 	DefaultClusterRoleForProjectMembers  string                         `json:"defaultClusterRoleForProjectMembers,omitempty" yaml:"defaultClusterRoleForProjectMembers,omitempty"`
 	DefaultPodSecurityPolicyTemplateID   string                         `json:"defaultPodSecurityPolicyTemplateId,omitempty" yaml:"defaultPodSecurityPolicyTemplateId,omitempty"`
 	Description                          string                         `json:"description,omitempty" yaml:"description,omitempty"`
@@ -92,23 +104,31 @@ type Cluster struct {
 	Driver                               string                         `json:"driver,omitempty" yaml:"driver,omitempty"`
 	EnableClusterAlerting                bool                           `json:"enableClusterAlerting,omitempty" yaml:"enableClusterAlerting,omitempty"`
 	EnableClusterMonitoring              bool                           `json:"enableClusterMonitoring,omitempty" yaml:"enableClusterMonitoring,omitempty"`
+	EnableDualStack                      bool                           `json:"enableDualStack,omitempty" yaml:"enableDualStack,omitempty"`
 	EnableGPUManagement                  bool                           `json:"enableGPUManagement,omitempty" yaml:"enableGPUManagement,omitempty"`
 	EnableNetworkPolicy                  *bool                          `json:"enableNetworkPolicy,omitempty" yaml:"enableNetworkPolicy,omitempty"`
 	FailedSpec                           *ClusterSpec                   `json:"failedSpec,omitempty" yaml:"failedSpec,omitempty"`
+	FluentdLogDir                        string                         `json:"fluentdLogDir,omitempty" yaml:"fluentdLogDir,omitempty"`
 	GPUSchedulerNodePort                 string                         `json:"gpuSchedulerNodePort,omitempty" yaml:"gpuSchedulerNodePort,omitempty"`
 	ImportedConfig                       *ImportedConfig                `json:"importedConfig,omitempty" yaml:"importedConfig,omitempty"`
 	Internal                             bool                           `json:"internal,omitempty" yaml:"internal,omitempty"`
 	IstioEnabled                         bool                           `json:"istioEnabled,omitempty" yaml:"istioEnabled,omitempty"`
+	K3sConfig                            *K3sConfig                     `json:"k3sConfig,omitempty" yaml:"k3sConfig,omitempty"`
 	Labels                               map[string]string              `json:"labels,omitempty" yaml:"labels,omitempty"`
 	Limits                               map[string]string              `json:"limits,omitempty" yaml:"limits,omitempty"`
 	LocalClusterAuthEndpoint             *LocalClusterAuthEndpoint      `json:"localClusterAuthEndpoint,omitempty" yaml:"localClusterAuthEndpoint,omitempty"`
 	MonitoringStatus                     *MonitoringStatus              `json:"monitoringStatus,omitempty" yaml:"monitoringStatus,omitempty"`
 	Name                                 string                         `json:"name,omitempty" yaml:"name,omitempty"`
+	NodeCount                            int64                          `json:"nodeCount,omitempty" yaml:"nodeCount,omitempty"`
+	NodeVersion                          int64                          `json:"nodeVersion,omitempty" yaml:"nodeVersion,omitempty"`
 	OwnerReferences                      []OwnerReference               `json:"ownerReferences,omitempty" yaml:"ownerReferences,omitempty"`
 	RancherKubernetesEngineConfig        *RancherKubernetesEngineConfig `json:"rancherKubernetesEngineConfig,omitempty" yaml:"rancherKubernetesEngineConfig,omitempty"`
 	Removed                              string                         `json:"removed,omitempty" yaml:"removed,omitempty"`
 	Requested                            map[string]string              `json:"requested,omitempty" yaml:"requested,omitempty"`
+	ScheduledClusterScan                 *ScheduledClusterScan          `json:"scheduledClusterScan,omitempty" yaml:"scheduledClusterScan,omitempty"`
+	ScheduledClusterScanStatus           *ScheduledClusterScanStatus    `json:"scheduledClusterScanStatus,omitempty" yaml:"scheduledClusterScanStatus,omitempty"`
 	State                                string                         `json:"state,omitempty" yaml:"state,omitempty"`
+	SystemDefaultRegistry                string                         `json:"systemDefaultRegistry,omitempty" yaml:"systemDefaultRegistry,omitempty"`
 	Transitioning                        string                         `json:"transitioning,omitempty" yaml:"transitioning,omitempty"`
 	TransitioningMessage                 string                         `json:"transitioningMessage,omitempty" yaml:"transitioningMessage,omitempty"`
 	UUID                                 string                         `json:"uuid,omitempty" yaml:"uuid,omitempty"`
@@ -128,6 +148,7 @@ type ClusterClient struct {
 
 type ClusterOperations interface {
 	List(opts *types.ListOpts) (*ClusterCollection, error)
+	ListAll(opts *types.ListOpts) (*ClusterCollection, error)
 	Create(opts *Cluster) (*Cluster, error)
 	Update(existing *Cluster, updates interface{}) (*Cluster, error)
 	Replace(existing *Cluster) (*Cluster, error)
@@ -152,7 +173,7 @@ type ClusterOperations interface {
 
 	ActionRotateCertificates(resource *Cluster, input *RotateCertificateInput) (*RotateCertificateOutput, error)
 
-	ActionRunSecurityScan(resource *Cluster) error
+	ActionRunSecurityScan(resource *Cluster, input *CisScanConfig) error
 
 	ActionSaveAsTemplate(resource *Cluster, input *SaveAsTemplateInput) (*SaveAsTemplateOutput, error)
 
@@ -187,6 +208,24 @@ func (c *ClusterClient) List(opts *types.ListOpts) (*ClusterCollection, error) {
 	resp := &ClusterCollection{}
 	err := c.apiClient.Ops.DoList(ClusterType, opts, resp)
 	resp.client = c
+	return resp, err
+}
+
+func (c *ClusterClient) ListAll(opts *types.ListOpts) (*ClusterCollection, error) {
+	resp := &ClusterCollection{}
+	resp, err := c.List(opts)
+	if err != nil {
+		return resp, err
+	}
+	data := resp.Data
+	for next, err := resp.Next(); next != nil && err == nil; next, err = next.Next() {
+		data = append(data, next.Data...)
+		resp = next
+		resp.Data = data
+	}
+	if err != nil {
+		return resp, err
+	}
 	return resp, err
 }
 
@@ -259,8 +298,8 @@ func (c *ClusterClient) ActionRotateCertificates(resource *Cluster, input *Rotat
 	return resp, err
 }
 
-func (c *ClusterClient) ActionRunSecurityScan(resource *Cluster) error {
-	err := c.apiClient.Ops.DoAction(ClusterType, "runSecurityScan", &resource.Resource, nil, nil)
+func (c *ClusterClient) ActionRunSecurityScan(resource *Cluster, input *CisScanConfig) error {
+	err := c.apiClient.Ops.DoAction(ClusterType, "runSecurityScan", &resource.Resource, input, nil)
 	return err
 }
 
