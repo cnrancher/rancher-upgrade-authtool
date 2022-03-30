@@ -38,6 +38,7 @@ replace (
 )
 
 require (
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/mitchellh/mapstructure v1.2.2
 	github.com/pkg/errors v0.9.1
 	github.com/rancher/rancher v0.0.0-20210329195251-b2a34d7cef44
