@@ -48,7 +48,7 @@ authtool --kubeconfig=<kube-config> --auth-type=0 --dry-run=true --log-file=<log
 We also support using upgrade tool by docker. If you're running outside the local cluster, please mount kubeconfig file to container.
 For example:
 ```
-docker run -d -v /tmp:/tmp jacie/authtool:v2.5-ent authtool --kubeconfig=/tmp/kubeconfig.yaml --dry-run=true --auth-type=1 upgrade
+docker run -v /tmp/kubeconfig.yaml:/tmp/kubeconfig.yaml jacie/authtool:v2.5-ent1 authtool --kubeconfig=/tmp/kubeconfig.yaml --dry-run=true --auth-type=1 upgrade
 ```
 
 > Please using `--dry-run=true` before running the command to make sure running result as expect.
