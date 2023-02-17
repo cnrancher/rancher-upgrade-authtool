@@ -7,12 +7,12 @@ import (
 	"reflect"
 	"strings"
 
+	ldapv3 "github.com/go-ldap/ldap/v3"
 	"github.com/pkg/errors"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	corev1 "github.com/rancher/rancher/pkg/generated/norman/core/v1"
 	managementv3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
 	"github.com/sirupsen/logrus"
-	ldapv2 "gopkg.in/ldap.v2"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -59,7 +59,7 @@ func Upgrade(c *Config) error {
 
 	logrus.Println("Step 2. Prepare user/groups for new principalID")
 	// get auth config
-	var lConn *ldapv2.Conn
+	var lConn *ldapv3.Conn
 	var objectFilter, groupFilter, uidAttribute, gidAttribute, baseDN, groupSearchDN string
 	var searchAttribute, groupSearchAttribute []string
 	if c.AuthConfigType == ActiveDirectoryAuth {
@@ -272,16 +272,16 @@ func Upgrade(c *Config) error {
 	return nil
 }
 
-func getLdapUserForUpdate(lConn *ldapv2.Conn, distinguishedName, filter string, scopeBaseObject int, searchAttributes []string) (*ldapv2.SearchResult, error) {
+func getLdapUserForUpdate(lConn *ldapv3.Conn, distinguishedName, filter string, scopeBaseObject int, searchAttributes []string) (*ldapv3.SearchResult, error) {
 	fmt.Printf("Query for distinguishedName %s, filter %s \n", distinguishedName, filter)
-	search := ldapv2.NewSearchRequest(distinguishedName,
-		scopeBaseObject, ldapv2.NeverDerefAliases, 0, 0, false,
+	search := ldapv3.NewSearchRequest(distinguishedName,
+		scopeBaseObject, ldapv3.NeverDerefAliases, 0, 0, false,
 		filter,
 		searchAttributes, nil)
 	result, err := lConn.Search(search)
 	if err != nil {
-		ldapErr, ok := reflect.ValueOf(err).Interface().(*ldapv2.Error)
-		if ok && ldapErr.ResultCode != ldapv2.LDAPResultNoSuchObject {
+		ldapErr, ok := reflect.ValueOf(err).Interface().(*ldapv3.Error)
+		if ok && ldapErr.ResultCode != ldapv3.LDAPResultNoSuchObject {
 			return nil, err
 		}
 		return nil, errors.New(NoResultFoundError)
@@ -318,7 +318,7 @@ func checkHasUIDAttribute(principalIDs []string, userScopeType, authConfigType s
 	return oldPrincipalIndex, hasFinishedSync
 }
 
-func prepareUsers(beforeUpdate map[string]v3.User, lConn *ldapv2.Conn,
+func prepareUsers(beforeUpdate map[string]v3.User, lConn *ldapv3.Conn,
 	userScopeType, authConfigType, objectFilter, uidAttribute string,
 	searchAttribute []string) (map[string]v3.User, map[string]v3.User) {
 	failedUsers := map[string]v3.User{}
@@ -348,14 +348,14 @@ func prepareUsers(beforeUpdate map[string]v3.User, lConn *ldapv2.Conn,
 	return preparedUsers, failedUsers
 }
 
-func generateNewPrincipalByDN(lConn *ldapv2.Conn, principalID, scopeType,
+func generateNewPrincipalByDN(lConn *ldapv3.Conn, principalID, scopeType,
 	filter, uniqueAttribute string, searchAttribute []string) (string, string, string, error) {
 	externalID, scope, err := GetDNAndScopeFromPrincipalID(principalID)
 	if err != nil {
 		return "", "", "", err
 	}
 
-	results, err := getLdapUserForUpdate(lConn, externalID, filter, ldapv2.ScopeBaseObject, searchAttribute)
+	results, err := getLdapUserForUpdate(lConn, externalID, filter, ldapv3.ScopeBaseObject, searchAttribute)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -364,8 +364,8 @@ func generateNewPrincipalByDN(lConn *ldapv2.Conn, principalID, scopeType,
 	return principalIDOfDN, principalOfUID, uniqueID, nil
 }
 
-func generateNewPrincipalForDNChanged(lConn *ldapv2.Conn, principalID, scopeType, objectFilter,
-	baseDN, uniqueAttribute string, searchAttributes []string) (string, string, string, *ldapv2.SearchResult, error) {
+func generateNewPrincipalForDNChanged(lConn *ldapv3.Conn, principalID, scopeType, objectFilter,
+	baseDN, uniqueAttribute string, searchAttributes []string) (string, string, string, *ldapv3.SearchResult, error) {
 	externalID, scope, err := GetDNAndScopeFromPrincipalID(principalID)
 	if err != nil {
 		logrus.Errorf("Error to get DN from principal %s with error: %v", principalID, err)
@@ -374,8 +374,8 @@ func generateNewPrincipalForDNChanged(lConn *ldapv2.Conn, principalID, scopeType
 	dnArray := strings.Split(externalID, ",")
 	// got first attribute of DN
 	filter := fmt.Sprintf("(&%s(%s))", objectFilter, dnArray[0])
-	var entry *ldapv2.Entry
-	results, err := getLdapUserForUpdate(lConn, baseDN, filter, ldapv2.ScopeWholeSubtree, searchAttributes)
+	var entry *ldapv3.Entry
+	results, err := getLdapUserForUpdate(lConn, baseDN, filter, ldapv3.ScopeWholeSubtree, searchAttributes)
 	if err != nil {
 		return "", "", "", nil, err
 	}
@@ -391,7 +391,7 @@ func generateNewPrincipalForDNChanged(lConn *ldapv2.Conn, principalID, scopeType
 	return principalIDOfDN, principalOfUID, uniqueID, results, nil
 }
 
-func getUniqueAttribute(entry *ldapv2.Entry, scopeType, scope, uniqueAttribute string) (string, string, string) {
+func getUniqueAttribute(entry *ldapv3.Entry, scopeType, scope, uniqueAttribute string) (string, string, string) {
 	var uniqueID string
 	if uniqueAttribute == "objectGUID" {
 		var b [16]byte
@@ -407,7 +407,7 @@ func getUniqueAttribute(entry *ldapv2.Entry, scopeType, scope, uniqueAttribute s
 }
 
 func preparePermissions(beforeCRTB []v3.ClusterRoleTemplateBinding, beforePRTB []v3.ProjectRoleTemplateBinding, beforeGRB []v3.GlobalRoleBinding,
-	lConn *ldapv2.Conn, groupScopeType, userScopeType, groupFilter, objectFilter,
+	lConn *ldapv3.Conn, groupScopeType, userScopeType, groupFilter, objectFilter,
 	gidAttribute, uidAttribute string, groupSearchAttribute, searchAttribute []string) (preparedCRTB []v3.ClusterRoleTemplateBinding,
 	failedCRTB []v3.ClusterRoleTemplateBinding, preparedPRTB []v3.ProjectRoleTemplateBinding,
 	failedPRTB []v3.ProjectRoleTemplateBinding, preparedGRB []v3.GlobalRoleBinding, failedGRB []v3.GlobalRoleBinding) {
@@ -510,7 +510,7 @@ func preparePermissions(beforeCRTB []v3.ClusterRoleTemplateBinding, beforePRTB [
 }
 
 func prepareDNChangedUsers(failedUsers map[string]v3.User, preparedUsers map[string]v3.User,
-	lConn *ldapv2.Conn, management managementv3.Interface,
+	lConn *ldapv3.Conn, management managementv3.Interface,
 	userScopeType, authConfigType, objectFilter, baseDN, uidAttribute string,
 	searchAttribute []string, beforeUpdate map[string]v3.User) ([]string, []string) {
 	manualUsers := []string{}
@@ -522,7 +522,7 @@ func prepareDNChangedUsers(failedUsers map[string]v3.User, preparedUsers map[str
 			principalID := principalIDs[oldPrincipalIndex]
 			var newPrincipalID, principalUID, uid string
 			var err error
-			var results *ldapv2.SearchResult
+			var results *ldapv3.SearchResult
 			newPrincipalID, principalUID, uid, results, err = generateNewPrincipalForDNChanged(lConn, principalID, userScopeType, objectFilter,
 				baseDN, uidAttribute, searchAttribute)
 			if err != nil {
@@ -572,7 +572,7 @@ func prepareDNChangedUsers(failedUsers map[string]v3.User, preparedUsers map[str
 
 func preparedDNChangedPermission(failedCRTB []v3.ClusterRoleTemplateBinding,
 	failedPRTB []v3.ProjectRoleTemplateBinding, preparedUser map[string]v3.User,
-	lConn *ldapv2.Conn, userScopeType, groupScopeType, objectFilter,
+	lConn *ldapv3.Conn, userScopeType, groupScopeType, objectFilter,
 	groupFilter, groupDN, baseDN, gidAttribute, uidAttribute string,
 	searchAttributes, groupSearchAttributes []string) (manualCRTB []v3.ClusterRoleTemplateBinding,
 	manualPRTB []v3.ProjectRoleTemplateBinding, newCRTB []v3.ClusterRoleTemplateBinding, newPRTB []v3.ProjectRoleTemplateBinding) {
@@ -661,13 +661,13 @@ func preparedDNChangedPermission(failedCRTB []v3.ClusterRoleTemplateBinding,
 	return manualCRTB, manualPRTB, newCRTB, newPRTB
 }
 
-func checkForGroups(userID, authConfigType string, management managementv3.Interface, results *ldapv2.SearchResult) ([]*ldapv2.Entry, error) {
+func checkForGroups(userID, authConfigType string, management managementv3.Interface, results *ldapv3.SearchResult) ([]*ldapv3.Entry, error) {
 	groupPrincipals, err := getGroupPrincipal(userID, authConfigType, management)
 	if err != nil {
 		return nil, err
 	}
 	// check for groups
-	checkEntries := []*ldapv2.Entry{}
+	checkEntries := []*ldapv3.Entry{}
 	for _, entry := range results.Entries {
 		memberOf := entry.GetAttributeValues("memberOf")
 		if len(memberOf) == len(groupPrincipals) {

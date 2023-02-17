@@ -6,11 +6,11 @@ import (
 	"os"
 	"strings"
 
+	ldapv3 "github.com/go-ldap/ldap/v3"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	corev1 "github.com/rancher/rancher/pkg/generated/norman/core/v1"
 	managementv3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
 	"github.com/sirupsen/logrus"
-	ldapv2 "gopkg.in/ldap.v2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -56,7 +56,7 @@ func Rollback(c *Config) error {
 	logrus.Infof("Find %d users for update", len(beforeUpdate))
 
 	// get auth config
-	var lConn *ldapv2.Conn
+	var lConn *ldapv3.Conn
 	var uidAttribute, gidAttribute, baseDN, groupSearchDN string
 	var searchAttribute, groupSearchAttribute []string
 	if c.AuthConfigType == ActiveDirectoryAuth {
@@ -203,7 +203,7 @@ func Rollback(c *Config) error {
 	return nil
 }
 
-func rollbackUser(beforeUpdate map[string]v3.User, lConn *ldapv2.Conn,
+func rollbackUser(beforeUpdate map[string]v3.User, lConn *ldapv3.Conn,
 	authConfigType, baseDN, uidAttribute string,
 	searchAttribute []string) ([]v3.User, []v3.User) {
 	failedUsers := []v3.User{}
@@ -246,7 +246,7 @@ func rollbackUser(beforeUpdate map[string]v3.User, lConn *ldapv2.Conn,
 	return preparedUsers, failedUsers
 }
 
-func rollbackClusterPermission(beforeUpdateCRTB []v3.ClusterRoleTemplateBinding, lConn *ldapv2.Conn,
+func rollbackClusterPermission(beforeUpdateCRTB []v3.ClusterRoleTemplateBinding, lConn *ldapv3.Conn,
 	authConfigType, baseDN, groupDN, uidAttribute, gidAttribute string,
 	searchAttribute, groupSearchAttribute []string) ([]v3.ClusterRoleTemplateBinding, []v3.ClusterRoleTemplateBinding) {
 	prepredCRTB := []v3.ClusterRoleTemplateBinding{}
@@ -276,7 +276,7 @@ func rollbackClusterPermission(beforeUpdateCRTB []v3.ClusterRoleTemplateBinding,
 	return prepredCRTB, failedCRTB
 }
 
-func rollbackProjectPermission(beforeUpdatePRTB []v3.ProjectRoleTemplateBinding, lConn *ldapv2.Conn,
+func rollbackProjectPermission(beforeUpdatePRTB []v3.ProjectRoleTemplateBinding, lConn *ldapv3.Conn,
 	authConfigType, baseDN, groupDN, uidAttribute, gidAttribute string,
 	searchAttribute, groupSearchAttribute []string) ([]v3.ProjectRoleTemplateBinding, []v3.ProjectRoleTemplateBinding) {
 	prepredPRTB := []v3.ProjectRoleTemplateBinding{}
@@ -306,7 +306,7 @@ func rollbackProjectPermission(beforeUpdatePRTB []v3.ProjectRoleTemplateBinding,
 	return prepredPRTB, failedPRTB
 }
 
-func generateOldPrincipal(lConn *ldapv2.Conn, authConfigType, scope, principalUID, uidAttribute, baseDN string,
+func generateOldPrincipal(lConn *ldapv3.Conn, authConfigType, scope, principalUID, uidAttribute, baseDN string,
 	searchAttribute []string) (string, error) {
 	// get distinguishedName by uid
 	uid, _, err := GetDNAndScopeFromPrincipalID(principalUID)
@@ -324,14 +324,14 @@ func generateOldPrincipal(lConn *ldapv2.Conn, authConfigType, scope, principalUI
 		filterValue = uid
 	}
 	filter := fmt.Sprintf("(%v=%v)", uidAttribute, filterValue)
-	search := ldapv2.NewSearchRequest(baseDN,
-		ldapv2.ScopeWholeSubtree, ldapv2.NeverDerefAliases, 0, 0, false,
+	search := ldapv3.NewSearchRequest(baseDN,
+		ldapv3.ScopeWholeSubtree, ldapv3.NeverDerefAliases, 0, 0, false,
 		filter,
 		searchAttribute, nil)
 
 	result, err := lConn.Search(search)
 	if err != nil {
-		if ldapErr, ok := err.(*ldapv2.Error); ok && ldapErr.ResultCode == 32 {
+		if ldapErr, ok := err.(*ldapv3.Error); ok && ldapErr.ResultCode == 32 {
 			return "", fmt.Errorf("search user for %s not found", filterValue)
 		}
 		return "", fmt.Errorf("search user with dn %s, filter %s error: %v", baseDN, filter, err)

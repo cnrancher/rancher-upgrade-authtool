@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
+	ldapv3 "github.com/go-ldap/ldap/v3"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v3client "github.com/rancher/rancher/pkg/client/generated/management/v3"
 	corev1 "github.com/rancher/rancher/pkg/generated/norman/core/v1"
 	v3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
-	ldapv2 "gopkg.in/ldap.v2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -75,11 +75,11 @@ func GetDNAndScopeFromPrincipalID(principalID string) (string, string, error) {
 	return externalID, scope, nil
 }
 
-func NewLDAPConn(servers []string, TLS, startTLS bool, port int64, connectionTimeout int64, caPool *x509.CertPool) (*ldapv2.Conn, error) {
-	var lConn *ldapv2.Conn
+func NewLDAPConn(servers []string, TLS, startTLS bool, port int64, connectionTimeout int64, caPool *x509.CertPool) (*ldapv3.Conn, error) {
+	var lConn *ldapv3.Conn
 	var err error
 	var tlsConfig *tls.Config
-	ldapv2.DefaultTimeout = time.Duration(connectionTimeout) * time.Millisecond
+	ldapv3.DefaultTimeout = time.Duration(connectionTimeout) * time.Millisecond
 	// TODO implment multi-server support
 	if len(servers) != 1 {
 		return nil, errors.New("invalid server config. only exactly 1 server is currently supported")
@@ -87,12 +87,12 @@ func NewLDAPConn(servers []string, TLS, startTLS bool, port int64, connectionTim
 	server := servers[0]
 	tlsConfig = &tls.Config{RootCAs: caPool, InsecureSkipVerify: false, ServerName: server}
 	if TLS {
-		lConn, err = ldapv2.DialTLS("tcp", fmt.Sprintf("%s:%d", server, port), tlsConfig)
+		lConn, err = ldapv3.DialTLS("tcp", fmt.Sprintf("%s:%d", server, port), tlsConfig)
 		if err != nil {
 			return nil, fmt.Errorf("Error creating ssl connection: %v", err)
 		}
 	} else if startTLS {
-		lConn, err = ldapv2.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
+		lConn, err = ldapv3.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
 		if err != nil {
 			return nil, fmt.Errorf("Error creating connection for startTLS: %v", err)
 		}
@@ -100,7 +100,7 @@ func NewLDAPConn(servers []string, TLS, startTLS bool, port int64, connectionTim
 			return nil, fmt.Errorf("Error upgrading startTLS connection: %v", err)
 		}
 	} else {
-		lConn, err = ldapv2.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
+		lConn, err = ldapv3.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
 		if err != nil {
 			return nil, fmt.Errorf("Error creating connection: %v", err)
 		}

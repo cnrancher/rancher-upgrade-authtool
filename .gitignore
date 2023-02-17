@@ -6,3 +6,4 @@
 /.trash-cache
 /trash.lock
 /.idea
+*.yaml
