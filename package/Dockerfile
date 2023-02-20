@@ -1,7 +1,7 @@
-FROM ubuntu:18.04
+FROM registry.suse.com/bci/bci-base:15.4
 
-COPY authtool /usr/local/bin/
+COPY authtool /usr/bin/
 
-VOLUME /usr/local/bin
+VOLUME /usr/bin
 
 CMD ["authtool"]
