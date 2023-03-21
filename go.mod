@@ -46,6 +46,7 @@ require (
 	github.com/rancher/rancher/pkg/client v0.0.0
 	github.com/sirupsen/logrus v1.9.0
 	github.com/urfave/cli v1.22.9
+	gomodules.xyz/jsonpatch/v2 v2.2.0
 	k8s.io/apimachinery v0.25.4
 	k8s.io/client-go v12.0.0+incompatible
 )

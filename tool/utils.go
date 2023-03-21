@@ -9,15 +9,15 @@ import (
 	"time"
 
 	ldapv3 "github.com/go-ldap/ldap/v3"
-	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
+	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
-	v3client "github.com/rancher/rancher/pkg/client/generated/management/v3"
 	corev1 "github.com/rancher/rancher/pkg/generated/norman/core/v1"
-	v3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
+	managementv3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
+	"github.com/sirupsen/logrus"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -46,6 +46,503 @@ type Config struct {
 	AuthConfigType string
 	IsDryRun       bool
 	LogFilePath    string
+}
+
+type AuthUtil struct {
+	management           managementv3.Interface
+	secretClient         corev1.SecretInterface
+	conn                 *ldapv3.Conn
+	userUniqueAttribute  string
+	groupUniqueAttribute string
+	userObjectFilter     string
+	groupObjectFilter    string
+	baseDN               string
+	groupSearchDN        string
+	userSearchAttribute  []string
+	groupSearchAttribute []string
+
+	manualCheckUsers []string
+	deprecateUsers   []string
+	manualCRTB       []v3.ClusterRoleTemplateBinding
+	manualPRTB       []v3.ProjectRoleTemplateBinding
+	manualGRB        []v3.GlobalRoleBinding
+}
+
+func NewAuthUtil() *AuthUtil {
+	return &AuthUtil{
+		manualCheckUsers: []string{},
+		deprecateUsers:   []string{},
+		manualCRTB:       []v3.ClusterRoleTemplateBinding{},
+		manualPRTB:       []v3.ProjectRoleTemplateBinding{},
+		manualGRB:        []v3.GlobalRoleBinding{},
+	}
+}
+
+func (u *AuthUtil) print() {
+	for _, maUser := range u.manualCheckUsers {
+		logrus.Warnf("Find multiple results or not exist when sync user %s. Need to manual check dn", maUser)
+	}
+
+	for _, deprecateU := range u.deprecateUsers {
+		logrus.Warnf("User %s login multiple times, please check and remove one.", deprecateU)
+	}
+
+	for _, mancrtb := range u.manualCRTB {
+		logrus.Warnf("Find multiple results or not exist principal for crtb %s, ns %s, please manual check dn or remove permission", mancrtb.Name, mancrtb.Namespace)
+	}
+
+	for _, manuprtb := range u.manualPRTB {
+		logrus.Warnf("Find multiple results or not exist principal for prtb %s, ns %s, please manual check dn or remove permission", manuprtb.Name, manuprtb.Namespace)
+	}
+
+	for _, manugrb := range u.manualGRB {
+		logrus.Warnf("please manual check global role binding permission %v", manugrb.Name)
+	}
+}
+
+func (u *AuthUtil) prepareUsers(list map[string]v3.User, authType string) map[string]v3.User {
+	userScopeType := fmt.Sprintf("%s%s://", authType, UserScope)
+	failedUsers := map[string]v3.User{}
+	preparedUsers := map[string]v3.User{}
+	// update user principal with unique id
+	for userID, user := range list {
+		principalIDs := user.PrincipalIDs
+		oldPrincipalIndex, hasFinishedSync := checkHasUIDAttribute(principalIDs, userScopeType, authType)
+		if !hasFinishedSync {
+			principalID := principalIDs[oldPrincipalIndex]
+			_, principalUID, uid, err := generateNewPrincipalByDN(u.conn, principalID, userScopeType, u.userObjectFilter, u.userUniqueAttribute, u.userSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identies found for user %s using current principal: %s", userID, principalID)
+					failedUsers[userID] = user
+				} else {
+					logrus.Errorf("failed to get user %s using principal: %s, err: %v", userID, principalID, err)
+				}
+				continue
+			}
+			principalIDs = append([]string{principalUID}, principalIDs...)
+			user.PrincipalIDs = principalIDs
+			preparedUsers[uid] = user
+			logrus.Infof("Using %s find unique attribute value %s for user %s", principalID, uid, userID)
+		}
+	}
+
+	// sync failed users with DN change
+	for userID, user := range failedUsers {
+		logrus.Println("================ Search for DN changed users ================")
+		principalIDs := user.PrincipalIDs
+		oldPrincipalIndex, hasFinishedSync := checkHasUIDAttribute(principalIDs, userScopeType, authType)
+		if !hasFinishedSync {
+			principalID := principalIDs[oldPrincipalIndex]
+			var newPrincipalID, principalUID, uid string
+			var err error
+			var results *ldapv3.SearchResult
+			newPrincipalID, principalUID, uid, results, err = generateNewPrincipalForDNChanged(u.conn, principalID, userScopeType, u.userObjectFilter,
+				u.baseDN, u.userUniqueAttribute, u.userSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identities can be retrieved to get user %s, principal %s", userID, principalID)
+					u.manualCheckUsers = append(u.manualCheckUsers, userID)
+					continue
+				} else if strings.EqualFold(err.Error(), MutipleResultFoundError) {
+					logrus.Warnf("sync user %s:: find multiple users for principal %s", userID, principalID)
+					checkEntries, err := checkForGroups(userID, authType, u.management, results)
+					if err != nil {
+						if apierrors.IsNotFound(err) {
+							logrus.Warnf("Skip for user %s with empty user group", userID)
+							u.manualCheckUsers = append(u.manualCheckUsers, userID)
+							continue
+						}
+						logrus.Errorf("failed to get group principals for user %s with error: %v", userID, err)
+						continue
+					}
+					if len(checkEntries) > 1 {
+						logrus.Warnf("Found multiple users with same group, need to check user %s manually", userID)
+						u.manualCheckUsers = append(u.manualCheckUsers, userID)
+						continue
+					} else if len(checkEntries) == 0 {
+						logrus.Warnf("No identities found, need to check user %s manually", userID)
+						u.manualCheckUsers = append(u.manualCheckUsers, userID)
+						continue
+					}
+					_, scope, err := GetDNAndScopeFromPrincipalID(principalID)
+					if err != nil {
+						logrus.Errorf("Get DN from principal %s error: %v", principalID, err)
+						continue
+					}
+					// if find unique user
+					newPrincipalID, principalUID, uid = getUniqueAttribute(checkEntries[0], userScopeType, scope, u.userUniqueAttribute)
+				} else {
+					continue
+				}
+			}
+			// check is only user
+			u.deprecateUsers = append(u.deprecateUsers, checkUniqueUser(uid, principalUID, newPrincipalID, oldPrincipalIndex, preparedUsers, user, list)...)
+		}
+	}
+	return preparedUsers
+}
+
+func (u *AuthUtil) prepareGRB(grbList []v3.GlobalRoleBinding, groupScopeType string) []v3.GlobalRoleBinding {
+	preparedGRB := []v3.GlobalRoleBinding{}
+	failedGRB := []v3.GlobalRoleBinding{}
+	for _, grb := range grbList {
+		if grb.GroupPrincipalName != "" && strings.HasPrefix(grb.GroupPrincipalName, groupScopeType) {
+			principalID := grb.GroupPrincipalName
+			_, principalUID, _, err := generateNewPrincipalByDN(u.conn, principalID, groupScopeType,
+				u.groupObjectFilter, u.groupUniqueAttribute, u.groupSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identies found using current principalID: %s for grb %s", principalID, grb.Name)
+					failedGRB = append(failedGRB, grb)
+				} else {
+					logrus.Errorf("failed to get group using principalID %s for grb %s, err: %v", principalID, grb.Name, err)
+				}
+				continue
+			}
+			grb.GroupPrincipalName = principalUID
+			preparedGRB = append(preparedGRB, grb)
+		}
+	}
+
+	if len(failedGRB) > 0 {
+		logrus.Println("================ Search for DN changed groups ================")
+		for _, grb := range failedGRB {
+			_, principalUID, _, _, err := generateNewPrincipalForDNChanged(u.conn, grb.GroupPrincipalName, groupScopeType, u.groupObjectFilter,
+				u.groupSearchDN, u.groupUniqueAttribute, u.groupSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identities can be retrieved to get grb %s, principal %s", grb.Name, grb.GroupPrincipalName)
+					u.manualGRB = append(u.manualGRB, grb)
+				} else if strings.EqualFold(err.Error(), MutipleResultFoundError) {
+					logrus.Warnf("sync crtb %s:: find multiple group for principal %s", grb.Name, grb.GroupPrincipalName)
+					u.manualGRB = append(u.manualGRB, grb)
+				}
+				continue
+			}
+			grb.GroupPrincipalName = principalUID
+			preparedGRB = append(preparedGRB, grb)
+		}
+	}
+
+	return preparedGRB
+}
+
+func (u *AuthUtil) prepareCRTB(crtbList []v3.ClusterRoleTemplateBinding, userScopeType, groupScopeType string) []v3.ClusterRoleTemplateBinding {
+	preparedCRTB := []v3.ClusterRoleTemplateBinding{}
+	failedCRTB := []v3.ClusterRoleTemplateBinding{}
+	for _, crtb := range crtbList {
+		var principalID string
+		if crtb.UserPrincipalName != "" && strings.HasPrefix(crtb.UserPrincipalName, userScopeType) {
+			principalID = crtb.UserPrincipalName
+			_, principalUID, _, err := generateNewPrincipalByDN(u.conn, principalID, userScopeType, u.userObjectFilter,
+				u.userUniqueAttribute, u.userSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identies found using current principal %s for crtb %s, ns %s", principalID, crtb.Name, crtb.Namespace)
+					failedCRTB = append(failedCRTB, crtb)
+				} else {
+					logrus.Errorf("failed to find user using principal %s for crtb %s, ns %s, err: %v", principalID, crtb.Name, crtb.Namespace, err)
+				}
+				continue
+			}
+			crtb.UserPrincipalName = principalUID
+		} else if crtb.GroupPrincipalName != "" && strings.HasPrefix(crtb.GroupPrincipalName, groupScopeType) {
+			principalID = crtb.GroupPrincipalName
+			_, principalUID, _, err := generateNewPrincipalByDN(u.conn, principalID, groupScopeType, u.groupObjectFilter,
+				u.groupUniqueAttribute, u.groupSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identies found using current principal %s for crtb %s, ns %s", principalID, crtb.Name, crtb.Namespace)
+					failedCRTB = append(failedCRTB, crtb)
+				} else {
+					logrus.Errorf("failed to find group using principal %s for crtb %s, ns %s, err: %v", principalID, crtb.Name, crtb.Namespace, err)
+				}
+				continue
+			}
+			crtb.GroupPrincipalName = principalUID
+		}
+		if principalID == "" {
+			continue
+		}
+		preparedCRTB = append(preparedCRTB, crtb)
+	}
+
+	if len(failedCRTB) > 0 {
+		logrus.Println("================ Search for DN changed CRTB users/groups ================")
+		for _, crtb := range failedCRTB {
+			if crtb.UserPrincipalName != "" && strings.HasPrefix(crtb.UserPrincipalName, userScopeType) {
+				_, principalUID, _, _, err := generateNewPrincipalForDNChanged(u.conn, crtb.UserPrincipalName, userScopeType, u.userObjectFilter,
+					u.baseDN, u.userUniqueAttribute, u.userSearchAttribute)
+				if err != nil {
+					if strings.EqualFold(err.Error(), NoResultFoundError) {
+						logrus.Warnf("No identities can be retrieved to get crtb %s, ns %s, principal %s", crtb.Name, crtb.Namespace, crtb.UserPrincipalName)
+						u.manualCRTB = append(u.manualCRTB, crtb)
+					} else if strings.EqualFold(err.Error(), MutipleResultFoundError) {
+						logrus.Warnf("sync crtb %s, ns %s:: find multiple users for principal %s", crtb.Name, crtb.Namespace, crtb.UserPrincipalName)
+						u.manualCRTB = append(u.manualCRTB, crtb)
+					}
+					continue
+				}
+				crtb.UserPrincipalName = principalUID
+				preparedCRTB = append(preparedCRTB, crtb)
+			} else if crtb.GroupPrincipalName != "" && strings.HasPrefix(crtb.GroupPrincipalName, groupScopeType) {
+				_, principalUID, _, _, err := generateNewPrincipalForDNChanged(u.conn, crtb.GroupPrincipalName, groupScopeType, u.groupObjectFilter,
+					u.groupSearchDN, u.groupUniqueAttribute, u.groupSearchAttribute)
+				if err != nil {
+					if strings.EqualFold(err.Error(), NoResultFoundError) {
+						logrus.Warnf("No identities can be retrieved to get crtb %s, ns %s, principal %s", crtb.Name, crtb.Namespace, crtb.GroupPrincipalName)
+						u.manualCRTB = append(u.manualCRTB, crtb)
+					} else if strings.EqualFold(err.Error(), MutipleResultFoundError) {
+						logrus.Warnf("sync crtb %s, ns %s:: find multiple group for principal %s", crtb.Name, crtb.Namespace, crtb.GroupPrincipalName)
+						u.manualCRTB = append(u.manualCRTB, crtb)
+					}
+					continue
+				}
+				crtb.GroupPrincipalName = principalUID
+				preparedCRTB = append(preparedCRTB, crtb)
+			}
+		}
+	}
+
+	return preparedCRTB
+}
+
+func (u *AuthUtil) preparePRTB(prtbList []v3.ProjectRoleTemplateBinding, userScopeType, groupScopeType string) []v3.ProjectRoleTemplateBinding {
+	preparedPRTB := []v3.ProjectRoleTemplateBinding{}
+	failedPRTB := []v3.ProjectRoleTemplateBinding{}
+	for _, prtb := range prtbList {
+		var principalID string
+		if prtb.UserPrincipalName != "" && strings.HasPrefix(prtb.UserPrincipalName, userScopeType) {
+			principalID = prtb.UserPrincipalName
+			_, principalUID, _, err := generateNewPrincipalByDN(u.conn, principalID, userScopeType, u.userObjectFilter,
+				u.userUniqueAttribute, u.userSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identies found using current principalID %s for prtb %s, ns %s", principalID, prtb.Name, prtb.Namespace)
+					failedPRTB = append(failedPRTB, prtb)
+				} else {
+					logrus.Errorf("failed to get user using principalID %s for prtb %s, ns %s, err: %v", principalID, prtb.Name, prtb.Namespace, err)
+				}
+				continue
+			}
+			prtb.UserPrincipalName = principalUID
+		} else if prtb.GroupPrincipalName != "" && strings.HasPrefix(prtb.GroupPrincipalName, groupScopeType) {
+			principalID = prtb.GroupPrincipalName
+			_, principalUID, _, err := generateNewPrincipalByDN(u.conn, principalID, groupScopeType,
+				u.groupObjectFilter, u.groupUniqueAttribute, u.groupSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identies found using current principalID: %s for prtb %s, ns %s", principalID, prtb.Name, prtb.Namespace)
+					failedPRTB = append(failedPRTB, prtb)
+				} else {
+					logrus.Errorf("failed to get group using principalID %s for prtb %s, ns %s, err: %v", principalID, prtb.Name, prtb.Namespace, err)
+				}
+				continue
+			}
+			prtb.GroupPrincipalName = principalUID
+		}
+		if principalID == "" {
+			continue
+		}
+		preparedPRTB = append(preparedPRTB, prtb)
+	}
+
+	if len(failedPRTB) > 0 {
+		logrus.Println("================ Search for DN changed PRTB users/groups ================")
+		for _, prtb := range failedPRTB {
+			if prtb.UserPrincipalName != "" && strings.HasPrefix(prtb.UserPrincipalName, userScopeType) {
+				_, principalUID, _, _, err := generateNewPrincipalForDNChanged(u.conn, prtb.UserPrincipalName, userScopeType, u.userObjectFilter,
+					u.baseDN, u.userUniqueAttribute, u.userSearchAttribute)
+				if err != nil {
+					if strings.EqualFold(err.Error(), NoResultFoundError) {
+						logrus.Warnf("No identities can be retrieved to get crtb %s, ns %s, principal %s", prtb.Name, prtb.Namespace, prtb.UserPrincipalName)
+						u.manualPRTB = append(u.manualPRTB, prtb)
+					} else if strings.EqualFold(err.Error(), MutipleResultFoundError) {
+						logrus.Warnf("sync crtb %s, ns %s:: find multiple users for principal %s", prtb.Name, prtb.Namespace, prtb.UserPrincipalName)
+						u.manualPRTB = append(u.manualPRTB, prtb)
+					}
+					continue
+				}
+				prtb.UserPrincipalName = principalUID
+				preparedPRTB = append(preparedPRTB, prtb)
+			} else if prtb.GroupPrincipalName != "" && strings.HasPrefix(prtb.GroupPrincipalName, groupScopeType) {
+				_, principalUID, _, _, err := generateNewPrincipalForDNChanged(u.conn, prtb.GroupPrincipalName, groupScopeType, u.groupObjectFilter,
+					u.groupSearchDN, u.groupUniqueAttribute, u.groupSearchAttribute)
+				if err != nil {
+					if strings.EqualFold(err.Error(), NoResultFoundError) {
+						logrus.Warnf("No identities can be retrieved to get crtb %s, ns %s, principal %s", prtb.Name, prtb.Namespace, prtb.GroupPrincipalName)
+						u.manualPRTB = append(u.manualPRTB, prtb)
+					} else if strings.EqualFold(err.Error(), MutipleResultFoundError) {
+						logrus.Warnf("sync crtb %s, ns %s:: find multiple group for principal %s", prtb.Name, prtb.Namespace, prtb.UserPrincipalName)
+						u.manualPRTB = append(u.manualPRTB, prtb)
+					}
+					continue
+				}
+				prtb.GroupPrincipalName = principalUID
+				preparedPRTB = append(preparedPRTB, prtb)
+			}
+		}
+	}
+
+	return preparedPRTB
+}
+
+func (u *AuthUtil) prepareAllowedPrincipals(userScopeType, groupScopeType string, oldPrincipals []string) ([]string, error) {
+	newAllowedPrincipals := []string{}
+	failedPrincipalIDs := []string{}
+	for _, allowedPrincipal := range oldPrincipals {
+		if strings.HasPrefix(allowedPrincipal, fmt.Sprintf("%s_uid://", userScopeType)) ||
+			strings.HasPrefix(allowedPrincipal, fmt.Sprintf("%s_uid://", groupScopeType)) {
+			newAllowedPrincipals = append(newAllowedPrincipals, allowedPrincipal)
+			continue
+		}
+		logrus.Infof("Prepare update for allowedPrincipal %s", allowedPrincipal)
+		if strings.HasPrefix(allowedPrincipal, fmt.Sprintf("%s://", userScopeType)) {
+			oldPrincipal, newPrincipal, _, err := prepareForNewPrincipal(u.conn, allowedPrincipal, fmt.Sprintf("%s://", userScopeType), u.userObjectFilter, u.userUniqueAttribute, u.userSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identies found using current principal %s ", allowedPrincipal)
+					failedPrincipalIDs = append(failedPrincipalIDs, allowedPrincipal)
+					continue
+				}
+				return nil, err
+			}
+			logrus.Infof("Old user allowedPrincipal %s will be replaced with new uniqueID: %s", oldPrincipal, newPrincipal)
+			newAllowedPrincipals = append(newAllowedPrincipals, newPrincipal)
+		} else {
+			oldPrincipal, newPrincipal, _, err := prepareForNewPrincipal(u.conn, allowedPrincipal, fmt.Sprintf("%s://", groupScopeType), u.groupObjectFilter, u.groupUniqueAttribute, u.groupSearchAttribute)
+			if err != nil {
+				if strings.EqualFold(err.Error(), NoResultFoundError) {
+					logrus.Warnf("No identies found using current principal %s ", allowedPrincipal)
+					failedPrincipalIDs = append(failedPrincipalIDs, allowedPrincipal)
+					continue
+				}
+				return nil, err
+			}
+			logrus.Infof("Old group allowedPrincipal %s will be replaced with new uniqueID: %s", oldPrincipal, newPrincipal)
+			newAllowedPrincipals = append(newAllowedPrincipals, newPrincipal)
+		}
+	}
+
+	manualPrincipal := []string{}
+	if len(failedPrincipalIDs) > 0 {
+		logrus.Println("================ AuthProvider:: Search for DN changed principals ================")
+		for _, principal := range failedPrincipalIDs {
+			if principal != "" && strings.HasPrefix(principal, fmt.Sprintf("%s://", userScopeType)) {
+				_, principalUID, _, _, err := generateNewPrincipalForDNChanged(u.conn, principal, fmt.Sprintf("%s://", userScopeType), u.userObjectFilter,
+					u.baseDN, u.userUniqueAttribute, u.userSearchAttribute)
+				if err != nil {
+					if strings.EqualFold(err.Error(), NoResultFoundError) {
+						logrus.Warnf("No identities can be retrieved to get principal %s", principal)
+						manualPrincipal = append(manualPrincipal, principal)
+					} else if strings.EqualFold(err.Error(), MutipleResultFoundError) {
+						logrus.Warnf("find multiple users for principal %s", principal)
+						manualPrincipal = append(manualPrincipal, principal)
+					}
+					continue
+				}
+				newAllowedPrincipals = append(newAllowedPrincipals, principalUID)
+			} else if principal != "" && strings.HasPrefix(principal, fmt.Sprintf("%s://", groupScopeType)) {
+				_, principalUID, _, _, err := generateNewPrincipalForDNChanged(u.conn, principal, fmt.Sprintf("%s://", groupScopeType), u.groupObjectFilter,
+					u.groupSearchDN, u.groupUniqueAttribute, u.groupSearchAttribute)
+				if err != nil {
+					if strings.EqualFold(err.Error(), NoResultFoundError) {
+						logrus.Warnf("No identities can be retrieved to get principal %s", principal)
+						manualPrincipal = append(manualPrincipal, principal)
+					} else if strings.EqualFold(err.Error(), MutipleResultFoundError) {
+						logrus.Warnf("find multiple group for principal %s", principal)
+						manualPrincipal = append(manualPrincipal, principal)
+					}
+					continue
+				}
+				newAllowedPrincipals = append(newAllowedPrincipals, principalUID)
+			}
+		}
+	}
+
+	if len(manualPrincipal) > 0 {
+		return nil, fmt.Errorf("couldn't hanle DN changed principals, please manual check for these principals set for Auth provider: %v", manualPrincipal)
+	}
+	return newAllowedPrincipals, nil
+}
+
+func (u *AuthUtil) UpdateGRB(grbList []v3.GlobalRoleBinding, isDryRun bool) {
+	logrus.Infof("RESULT:: Will update %d grb", len(grbList))
+	for _, grb := range grbList {
+		if !isDryRun {
+			_, err := u.management.GlobalRoleBindings("").Update(&grb)
+			if err != nil {
+				logrus.Errorf("failed to update grb %s, with error: %v", grb.Name, err)
+				continue
+			}
+		} else {
+			logrus.Infof("Update GRB %s, with group principal %s", grb.Name, grb.GroupPrincipalName)
+		}
+	}
+}
+
+func (u *AuthUtil) UpdateCRTB(crtbList []v3.ClusterRoleTemplateBinding, isDryRun bool) {
+	logrus.Infof("RESULT:: Will update %d crtb", len(crtbList))
+	for _, crtb := range crtbList {
+		if !isDryRun {
+			// create a new one
+			newCRTB := crtb.DeepCopy()
+			newCRTB.Name = ""
+			newCRTB.ResourceVersion = ""
+			_, err := u.management.ClusterRoleTemplateBindings(newCRTB.Namespace).Create(newCRTB)
+			if err != nil {
+				logrus.Errorf("failed to update crtb %s, ns %s with error: %v", crtb.Name, crtb.Namespace, err)
+				continue
+			}
+			err = u.management.ClusterRoleTemplateBindings(crtb.Namespace).Delete(crtb.Name, &metav1.DeleteOptions{})
+			if err != nil {
+				logrus.Errorf("failed to remove old crtb %s, ns %s with error: %v", crtb.Name, crtb.Namespace, err)
+				continue
+			}
+		} else {
+			logrus.Infof("Will update CRTB %s, ns %s with user principal %s, group principal %s", crtb.Name, crtb.Namespace, crtb.UserPrincipalName, crtb.GroupPrincipalName)
+		}
+	}
+}
+
+func (u *AuthUtil) UpdatePRTB(prtbList []v3.ProjectRoleTemplateBinding, isDryRun bool) {
+	logrus.Infof("RESULT:: Will update %d prtb", len(prtbList))
+	for _, prtb := range prtbList {
+		if !isDryRun {
+			newPRTB := prtb.DeepCopy()
+			newPRTB.Name = ""
+			newPRTB.ResourceVersion = ""
+			_, err := u.management.ProjectRoleTemplateBindings(newPRTB.Namespace).Create(newPRTB)
+			if err != nil {
+				logrus.Errorf("failed to update prtb %s, ns %s with error: %v", prtb.Name, prtb.Namespace, err)
+				continue
+			}
+			err = u.management.ProjectRoleTemplateBindings(prtb.Namespace).Delete(prtb.Name, &metav1.DeleteOptions{})
+			if err != nil {
+				logrus.Errorf("failed to update prtb %s, ns %s with error: %v", prtb.Name, prtb.Namespace, err)
+				continue
+			}
+		} else {
+			logrus.Infof("Will update PRTB %s, ns %s with user principal %s, group principal %s", prtb.Name, prtb.Namespace, prtb.UserPrincipalName, prtb.GroupPrincipalName)
+		}
+	}
+}
+
+func (u *AuthUtil) UpdateUser(userList map[string]v3.User, isDryRun bool) {
+	logrus.Infof("RESULT:: Will update %d users", len(userList))
+	for _, user := range userList {
+		if !isDryRun {
+			_, err := u.management.Users("").Update(&user)
+			if err != nil {
+				logrus.Errorf("failed to update user %s with error: %v", user.Name, err)
+				logrus.Infof("failed user is: %++v", user)
+				continue
+			}
+		} else {
+			logrus.Infof("DRY_RUN:: User %s need to sync by principalIDs: %v", user.Name, user.PrincipalIDs)
+		}
+	}
 }
 
 func GetConfig(c *Config) (*rest.Config, error) {
@@ -111,86 +608,6 @@ func NewLDAPConn(servers []string, TLS, startTLS bool, port int64, connectionTim
 	return lConn, nil
 }
 
-func GetActiveDirectoryConfig(management v3.Interface, coreClient corev1.SecretInterface) (*v32.ActiveDirectoryConfig, *x509.CertPool, error) {
-	authConfigObj, err := management.AuthConfigs("").ObjectClient().UnstructuredClient().Get("activedirectory", metav1.GetOptions{})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to retrieve ActiveDirectoryConfig, error: %v", err)
-	}
-
-	u, ok := authConfigObj.(runtime.Unstructured)
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to retrieve ActiveDirectoryConfig, cannot read k8s Unstructured data")
-	}
-	storedADConfigMap := u.UnstructuredContent()
-
-	storedADConfig := &v32.ActiveDirectoryConfig{}
-	mapstructure.Decode(storedADConfigMap, storedADConfig)
-
-	metadataMap, ok := storedADConfigMap["metadata"].(map[string]interface{})
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to retrieve ActiveDirectoryConfig metadata, cannot read k8s Unstructured data")
-	}
-
-	typemeta := &metav1.ObjectMeta{}
-	mapstructure.Decode(metadataMap, typemeta)
-	storedADConfig.ObjectMeta = *typemeta
-
-	if storedADConfig.ServiceAccountPassword != "" {
-		value, err := ReadFromSecret(coreClient, storedADConfig.ServiceAccountPassword,
-			strings.ToLower(v3client.ActiveDirectoryConfigFieldServiceAccountPassword))
-		if err != nil {
-			return nil, nil, err
-		}
-		storedADConfig.ServiceAccountPassword = value
-	}
-
-	pool, err := newCAPool(storedADConfig.Certificate)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return storedADConfig, pool, nil
-}
-
-func GetLDAPConfig(management v3.Interface, coreClient corev1.SecretInterface) (*v32.LdapConfig, *x509.CertPool, error) {
-	authConfigObj, err := management.AuthConfigs("").ObjectClient().UnstructuredClient().Get("openldap", metav1.GetOptions{})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to retrieve openldap config, error: %v", err)
-	}
-
-	u, ok := authConfigObj.(runtime.Unstructured)
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to retrieve openldap config, cannot read k8s Unstructured data")
-	}
-	storedLdapConfigMap := u.UnstructuredContent()
-	storedLdapConfig := &v3.LdapConfig{}
-
-	mapstructure.Decode(storedLdapConfigMap, storedLdapConfig)
-	metadataMap, ok := storedLdapConfigMap["metadata"].(map[string]interface{})
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to retrieve openldap metadata, cannot read k8s Unstructured data")
-	}
-	objectMeta := &metav1.ObjectMeta{}
-	mapstructure.Decode(metadataMap, objectMeta)
-	storedLdapConfig.ObjectMeta = *objectMeta
-
-	pool, err := newCAPool(storedLdapConfig.Certificate)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if storedLdapConfig.ServiceAccountPassword != "" {
-		value, err := ReadFromSecret(coreClient, storedLdapConfig.ServiceAccountPassword,
-			strings.ToLower(v3client.LdapConfigFieldServiceAccountPassword))
-		if err != nil {
-			return nil, nil, err
-		}
-		storedLdapConfig.ServiceAccountPassword = value
-	}
-
-	return storedLdapConfig, pool, nil
-}
-
 func GetUserExternalID(username string, loginDomain string) string {
 	if strings.Contains(username, "\\") {
 		return username
@@ -243,7 +660,7 @@ func GetGroupSearchAttributesForLDAP(config *v32.LdapConfig, uidAttribute string
 	return groupSeachAttributes
 }
 
-func GetUsersForUpdate(management v3.Interface, authType string) (map[string]v32.User, error) {
+func GetUsersForUpdate(management managementv3.Interface, authType string) (map[string]v32.User, error) {
 	userList, err := management.Users("").List(metav1.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -288,4 +705,160 @@ func ReadFromSecret(secrets corev1.SecretInterface, secretInfo string, field str
 		}
 	}
 	return secretInfo, nil
+}
+
+func generateNewPrincipalForDNChanged(lConn *ldapv3.Conn, principalID, scopeType, objectFilter,
+	baseDN, uniqueAttribute string, searchAttributes []string) (string, string, string, *ldapv3.SearchResult, error) {
+	externalID, scope, err := GetDNAndScopeFromPrincipalID(principalID)
+	if err != nil {
+		logrus.Errorf("Error to get DN from principal %s with error: %v", principalID, err)
+		return "", "", "", nil, err
+	}
+	dnArray := strings.Split(externalID, ",")
+	// got first attribute of DN
+	filter := fmt.Sprintf("(&%s(%s))", objectFilter, dnArray[0])
+	var entry *ldapv3.Entry
+	results, err := getLdapUserForUpdate(lConn, baseDN, filter, ldapv3.ScopeWholeSubtree, searchAttributes)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	if len(results.Entries) < 1 {
+		return "", "", "", nil, errors.New(NoResultFoundError)
+	} else if len(results.Entries) > 1 {
+		return "", "", "", results, errors.New(MutipleResultFoundError)
+	}
+	entry = results.Entries[0]
+	logrus.Infof("generateNewPrincipalForDNChanged: Find unique user by filter %s, for original DN %s", filter, principalID)
+	principalIDOfDN, principalOfUID, uniqueID := getUniqueAttribute(entry, scopeType, scope, uniqueAttribute)
+
+	return principalIDOfDN, principalOfUID, uniqueID, results, nil
+}
+
+func generateNewPrincipalByDN(lConn *ldapv3.Conn, principalID, scopeType,
+	filter, uniqueAttribute string, searchAttribute []string) (string, string, string, error) {
+	externalID, scope, err := GetDNAndScopeFromPrincipalID(principalID)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	results, err := getLdapUserForUpdate(lConn, externalID, filter, ldapv3.ScopeBaseObject, searchAttribute)
+	if err != nil {
+		return "", "", "", err
+	}
+	entry := results.Entries[0]
+	principalIDOfDN, principalOfUID, uniqueID := getUniqueAttribute(entry, scopeType, scope, uniqueAttribute)
+	return principalIDOfDN, principalOfUID, uniqueID, nil
+}
+
+func checkHasUIDAttribute(principalIDs []string, userScopeType, authConfigType string) (int, bool) {
+	var oldPrincipalIndex int
+	hasFinishedSync := false
+	for index, principalID := range principalIDs {
+		if strings.HasPrefix(principalID, userScopeType) {
+			oldPrincipalIndex = index
+		} else if strings.HasPrefix(principalID, fmt.Sprintf("%s%s_uid://", authConfigType, UserScope)) {
+			hasFinishedSync = true
+			break
+		}
+	}
+	return oldPrincipalIndex, hasFinishedSync
+}
+
+func checkUniqueUser(uid, principalUID, newPrincipalID string, oldPrincipalIndex int,
+	preparedUsers map[string]v3.User, user v3.User, beforeUpdate map[string]v3.User) []string {
+	principalIDs := user.PrincipalIDs
+	deprecateUsers := []string{}
+	if pUser, ok := preparedUsers[uid]; ok {
+		logrus.Infof("find exist user %s", pUser.Name)
+		// find latest user
+		if pUser.CreationTimestamp.Time.UnixNano() > user.CreationTimestamp.Time.UnixNano() {
+			// keep latest user
+			logrus.Infof("checkUniqueUser: Keep latest user %s, user %s will deprecate", pUser.Name, user.Name)
+			deprecateUsers = append(deprecateUsers, user.Name)
+		} else {
+			logrus.Infof("checkUniqueUser: Keep latest user %s, user %s will deprecate", user.Name, pUser.Name)
+			delete(preparedUsers, uid)
+			deprecateUsers = append(deprecateUsers, pUser.Name)
+			principalIDs[oldPrincipalIndex] = newPrincipalID
+			principalIDs = append([]string{principalUID}, principalIDs...)
+			user.PrincipalIDs = principalIDs
+			preparedUsers[uid] = user
+		}
+	} else {
+		// check from exist user
+		isExist := false
+		for userID, user := range beforeUpdate {
+			pIDs := user.PrincipalIDs
+			for _, pID := range pIDs {
+				if strings.EqualFold(pID, principalUID) && userID != user.Name {
+					deprecateUsers = append(deprecateUsers, user.Name)
+					logrus.Warnf("User has exist with %s, user %s deprecated", userID, user.Name)
+					isExist = true
+					break
+				}
+			}
+		}
+		if !isExist {
+			principalIDs[oldPrincipalIndex] = newPrincipalID
+			principalIDs = append([]string{principalUID}, principalIDs...)
+			user.PrincipalIDs = principalIDs
+			preparedUsers[uid] = user
+		}
+	}
+
+	return deprecateUsers
+}
+
+func getGroupPrincipal(userID, authConfigType string, management managementv3.Interface) ([]v3.Principal, error) {
+	userAttributes, err := management.UserAttributes("").Get(userID, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	groupPrincipals := userAttributes.GroupPrincipals[authConfigType].Items
+
+	return groupPrincipals, nil
+}
+
+func checkForGroups(userID, authConfigType string, management managementv3.Interface, results *ldapv3.SearchResult) ([]*ldapv3.Entry, error) {
+	groupPrincipals, err := getGroupPrincipal(userID, authConfigType, management)
+	if err != nil {
+		return nil, err
+	}
+	// check for groups
+	checkEntries := []*ldapv3.Entry{}
+	for _, entry := range results.Entries {
+		memberOf := entry.GetAttributeValues("memberOf")
+		if len(memberOf) == len(groupPrincipals) {
+			isEqual := false
+			if len(memberOf) == 0 {
+				isEqual = true
+			} else {
+				for _, member := range memberOf {
+					memberGroup := fmt.Sprintf("%s_group://%s", authConfigType, member)
+					for _, groupPrincipal := range groupPrincipals {
+						if strings.EqualFold(memberGroup, groupPrincipal.Name) {
+							isEqual = true
+							break
+						}
+					}
+					if !isEqual {
+						logrus.Infof("Skip for different memberOf=%v attribute: user=%s, account=%s, name=%s",
+							memberOf,
+							entry.DN, entry.GetAttributeValue("sAMAccountName"),
+							entry.GetAttributeValue("name"))
+						break
+					}
+				}
+			}
+			if isEqual {
+				checkEntries = append(checkEntries, entry)
+			}
+		} else {
+			logrus.Infof("Skip for different memberOf=%v attribute: user=%s, account=%s, name=%s",
+				memberOf,
+				entry.DN, entry.GetAttributeValue("sAMAccountName"),
+				entry.GetAttributeValue("name"))
+		}
+	}
+	return checkEntries, nil
 }
