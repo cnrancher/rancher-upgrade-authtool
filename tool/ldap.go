@@ -1,23 +1,25 @@
 package tool
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"strings"
 
+	managementv3 "github.com/JacieChao/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
 	"github.com/mitchellh/mapstructure"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v3client "github.com/rancher/rancher/pkg/client/generated/management/v3"
-	corev1 "github.com/rancher/rancher/pkg/generated/norman/core/v1"
-	managementv3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
 	"github.com/sirupsen/logrus"
 	"gomodules.xyz/jsonpatch/v2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
+	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 type LDAPAuthTool struct {
@@ -33,10 +35,11 @@ func init() {
 	})
 }
 
-func (l *LDAPAuthTool) NewAuthTool(management managementv3.Interface, coreClient corev1.SecretInterface) error {
+func (l *LDAPAuthTool) NewAuthTool(management managementv3.Interface, coreClient v1.CoreV1Interface, client dynamic.Interface) error {
 	l.management = management
-	l.secretClient = coreClient
-	ldapConfig, caPool, err := GetLDAPConfig(management, coreClient)
+	l.coreClient = coreClient
+	l.client = client
+	ldapConfig, caPool, err := GetLDAPConfig(l.client, coreClient)
 	if err != nil {
 		return err
 	}
@@ -99,7 +102,7 @@ func (l *LDAPAuthTool) UpdateAllowedPrincipals(isDryRun bool) error {
 		}
 		logrus.Infof("Will update new openldap auth config with patches %v", patches)
 		patchBytes, _ := json.Marshal(patches)
-		_, err = l.management.AuthConfigs("").ObjectClient().Patch(OpenLDAPAuth, l.config, types.JSONPatchType, patchBytes)
+		_, err = l.management.AuthConfig().Patch(OpenLDAPAuth, types.JSONPatchType, patchBytes)
 		if err != nil {
 			return err
 		}
@@ -132,17 +135,17 @@ func (l *LDAPAuthTool) PrintManualCheckData() {
 	l.print()
 }
 
-func GetLDAPConfig(management managementv3.Interface, coreClient corev1.SecretInterface) (*v32.LdapConfig, *x509.CertPool, error) {
-	authConfigObj, err := management.AuthConfigs("").ObjectClient().UnstructuredClient().Get("openldap", metav1.GetOptions{})
+func GetLDAPConfig(client dynamic.Interface, coreClient v1.CoreV1Interface) (*v32.LdapConfig, *x509.CertPool, error) {
+	var gvr = schema.GroupVersionResource{
+		Group:    "management.cattle.io",
+		Version:  "v3",
+		Resource: "authconfigs",
+	}
+	authConfigObj, err := client.Resource(gvr).Get(context.TODO(), OpenLDAPAuth, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve openldap config, error: %v", err)
 	}
-
-	u, ok := authConfigObj.(runtime.Unstructured)
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to retrieve openldap config, cannot read k8s Unstructured data")
-	}
-	storedLdapConfigMap := u.UnstructuredContent()
+	storedLdapConfigMap := authConfigObj.UnstructuredContent()
 	storedLdapConfig := &v3.LdapConfig{}
 
 	mapstructure.Decode(storedLdapConfigMap, storedLdapConfig)

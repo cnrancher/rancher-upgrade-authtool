@@ -6,17 +6,18 @@ import (
 	"fmt"
 	"strings"
 
+	managementv3 "github.com/JacieChao/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
 	"github.com/mitchellh/mapstructure"
 	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v3client "github.com/rancher/rancher/pkg/client/generated/management/v3"
-	corev1 "github.com/rancher/rancher/pkg/generated/norman/core/v1"
-	managementv3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
+	"github.com/rancher/wrangler/pkg/unstructured"
 	"github.com/sirupsen/logrus"
 	"gomodules.xyz/jsonpatch/v2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
+	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 type ADAuthTool struct {
@@ -32,9 +33,10 @@ func init() {
 	})
 }
 
-func (au *ADAuthTool) NewAuthTool(management managementv3.Interface, coreClient corev1.SecretInterface) error {
+func (au *ADAuthTool) NewAuthTool(management managementv3.Interface, coreClient v1.CoreV1Interface, client dynamic.Interface) error {
 	au.management = management
-	au.secretClient = coreClient
+	au.coreClient = coreClient
+	au.client = client
 	adConfig, caPool, err := GetActiveDirectoryConfig(management, coreClient)
 	if err != nil {
 		return err
@@ -98,7 +100,7 @@ func (au *ADAuthTool) UpdateAllowedPrincipals(isDryRun bool) error {
 		}
 		logrus.Infof("Will update new activedirectory auth config with patches %v", patches)
 		patchBytes, _ := json.Marshal(patches)
-		_, err = au.management.AuthConfigs("").ObjectClient().Patch(ActiveDirectoryAuth, au.config, types.JSONPatchType, patchBytes)
+		_, err = au.management.AuthConfig().Patch(ActiveDirectoryAuth, types.JSONPatchType, patchBytes)
 		if err != nil {
 			return err
 		}
@@ -131,15 +133,15 @@ func (au *ADAuthTool) PrintManualCheckData() {
 	au.print()
 }
 
-func GetActiveDirectoryConfig(management managementv3.Interface, coreClient corev1.SecretInterface) (*v32.ActiveDirectoryConfig, *x509.CertPool, error) {
-	authConfigObj, err := management.AuthConfigs("").ObjectClient().UnstructuredClient().Get("activedirectory", metav1.GetOptions{})
+func GetActiveDirectoryConfig(management managementv3.Interface, coreClient v1.CoreV1Interface) (*v32.ActiveDirectoryConfig, *x509.CertPool, error) {
+	authConfigObj, err := management.AuthConfig().Get(ActiveDirectoryAuth, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve ActiveDirectoryConfig, error: %v", err)
 	}
 
-	u, ok := authConfigObj.(runtime.Unstructured)
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to retrieve ActiveDirectoryConfig, cannot read k8s Unstructured data")
+	u, err := unstructured.ToUnstructured(authConfigObj)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to retrieve openldap config, cannot read k8s Unstructured data")
 	}
 	storedADConfigMap := u.UnstructuredContent()
 

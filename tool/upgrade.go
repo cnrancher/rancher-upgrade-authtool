@@ -8,14 +8,17 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/JacieChao/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io"
+	managementv3 "github.com/JacieChao/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
 	ldapv3 "github.com/go-ldap/ldap/v3"
 	"github.com/pkg/errors"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
-	corev1 "github.com/rancher/rancher/pkg/generated/norman/core/v1"
-	managementv3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
 	"github.com/sirupsen/logrus"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 type Tool func() AuthTool
@@ -44,7 +47,7 @@ func GetAuthTool(name string) AuthTool {
 }
 
 type AuthTool interface {
-	NewAuthTool(management managementv3.Interface, coreClient corev1.SecretInterface) error
+	NewAuthTool(management managementv3.Interface, coreClient v1.CoreV1Interface, client dynamic.Interface) error
 	GetAllowedPrincipals() []string
 	UpdateAllowedPrincipals(isDryRun bool) error
 	UpdateUserPrincipals(list map[string]v3.User, isDryRun bool)
@@ -58,11 +61,15 @@ func Upgrade(c *Config) error {
 	if err != nil {
 		return err
 	}
-	management, err := managementv3.NewForConfig(*cfg)
+	mgmt, err := management.NewFactoryFromConfig(cfg)
 	if err != nil {
 		return err
 	}
-	coreClient, err := corev1.NewForConfig(*cfg)
+	k8sClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return err
+	}
+	client, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		return err
 	}
@@ -76,7 +83,8 @@ func Upgrade(c *Config) error {
 		logrus.SetOutput(mw)
 	}
 	tool := GetAuthTool(c.AuthConfigType)
-	if err := tool.NewAuthTool(management, coreClient.Secrets("")); err != nil {
+	mgmtInterface := mgmt.Management().V3()
+	if err := tool.NewAuthTool(mgmtInterface, k8sClient.CoreV1(), client); err != nil {
 		return err
 	}
 	defer tool.DestroyAuthTool()
@@ -93,7 +101,7 @@ func Upgrade(c *Config) error {
 	}
 	logrus.Println("Step 2. Get User list")
 	userScopeType := fmt.Sprintf("%s%s://", c.AuthConfigType, UserScope)
-	beforeUpdate, err := GetUsersForUpdate(management, userScopeType)
+	beforeUpdate, err := GetUsersForUpdate(mgmtInterface, userScopeType)
 	if err != nil {
 		return fmt.Errorf("failed to get user list: %v", err)
 	}
@@ -107,7 +115,7 @@ func Upgrade(c *Config) error {
 
 	logrus.Println("Step 3. Prepare user/groups for new principalID")
 	groupScopeType := fmt.Sprintf("%s%s://", c.AuthConfigType, GroupScope)
-	grbList, err := management.GlobalRoleBindings("").List(metav1.ListOptions{})
+	grbList, err := mgmtInterface.GlobalRoleBinding().List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -119,7 +127,7 @@ func Upgrade(c *Config) error {
 	}
 	logrus.Infof("find %d global role bindings to update for group principal", len(beforeUpdateGRB))
 
-	crtbList, err := management.ClusterRoleTemplateBindings("").List(metav1.ListOptions{})
+	crtbList, err := mgmtInterface.ClusterRoleTemplateBinding().List("", metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -133,7 +141,7 @@ func Upgrade(c *Config) error {
 	}
 	logrus.Infof("find %d crtb need to update", len(beforeUpdateCRTB))
 
-	prtbList, err := management.ProjectRoleTemplateBindings("").List(metav1.ListOptions{})
+	prtbList, err := mgmtInterface.ProjectRoleTemplateBinding().List("", metav1.ListOptions{})
 	if err != nil {
 		return err
 	}

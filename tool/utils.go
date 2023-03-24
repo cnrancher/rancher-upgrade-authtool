@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -8,16 +9,17 @@ import (
 	"strings"
 	"time"
 
+	managementv3 "github.com/JacieChao/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
 	ldapv3 "github.com/go-ldap/ldap/v3"
 	"github.com/pkg/errors"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
-	corev1 "github.com/rancher/rancher/pkg/generated/norman/core/v1"
-	managementv3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
 	"github.com/sirupsen/logrus"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
+	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -27,7 +29,6 @@ const (
 	OpenLDAPAuth            = "openldap"
 	UserScope               = "_user"
 	GroupScope              = "_group"
-	DefaultTimeout          = 5000
 	NoResultFoundError      = "No identities can be retrieved"
 	MutipleResultFoundError = "Get more than one results"
 	SecretsNamespace        = "cattle-global-data"
@@ -50,7 +51,8 @@ type Config struct {
 
 type AuthUtil struct {
 	management           managementv3.Interface
-	secretClient         corev1.SecretInterface
+	coreClient           v1.CoreV1Interface
+	client               dynamic.Interface
 	conn                 *ldapv3.Conn
 	userUniqueAttribute  string
 	groupUniqueAttribute string
@@ -471,7 +473,7 @@ func (u *AuthUtil) UpdateGRB(grbList []v3.GlobalRoleBinding, isDryRun bool) {
 	logrus.Infof("RESULT:: Will update %d grb", len(grbList))
 	for _, grb := range grbList {
 		if !isDryRun {
-			_, err := u.management.GlobalRoleBindings("").Update(&grb)
+			_, err := u.management.GlobalRoleBinding().Update(&grb)
 			if err != nil {
 				logrus.Errorf("failed to update grb %s, with error: %v", grb.Name, err)
 				continue
@@ -490,12 +492,12 @@ func (u *AuthUtil) UpdateCRTB(crtbList []v3.ClusterRoleTemplateBinding, isDryRun
 			newCRTB := crtb.DeepCopy()
 			newCRTB.Name = ""
 			newCRTB.ResourceVersion = ""
-			_, err := u.management.ClusterRoleTemplateBindings(newCRTB.Namespace).Create(newCRTB)
+			_, err := u.management.ClusterRoleTemplateBinding().Create(newCRTB)
 			if err != nil {
 				logrus.Errorf("failed to update crtb %s, ns %s with error: %v", crtb.Name, crtb.Namespace, err)
 				continue
 			}
-			err = u.management.ClusterRoleTemplateBindings(crtb.Namespace).Delete(crtb.Name, &metav1.DeleteOptions{})
+			err = u.management.ClusterRoleTemplateBinding().Delete(crtb.Namespace, crtb.Name, &metav1.DeleteOptions{})
 			if err != nil {
 				logrus.Errorf("failed to remove old crtb %s, ns %s with error: %v", crtb.Name, crtb.Namespace, err)
 				continue
@@ -513,12 +515,12 @@ func (u *AuthUtil) UpdatePRTB(prtbList []v3.ProjectRoleTemplateBinding, isDryRun
 			newPRTB := prtb.DeepCopy()
 			newPRTB.Name = ""
 			newPRTB.ResourceVersion = ""
-			_, err := u.management.ProjectRoleTemplateBindings(newPRTB.Namespace).Create(newPRTB)
+			_, err := u.management.ProjectRoleTemplateBinding().Create(newPRTB)
 			if err != nil {
 				logrus.Errorf("failed to update prtb %s, ns %s with error: %v", prtb.Name, prtb.Namespace, err)
 				continue
 			}
-			err = u.management.ProjectRoleTemplateBindings(prtb.Namespace).Delete(prtb.Name, &metav1.DeleteOptions{})
+			err = u.management.ProjectRoleTemplateBinding().Delete(prtb.Namespace, prtb.Name, &metav1.DeleteOptions{})
 			if err != nil {
 				logrus.Errorf("failed to update prtb %s, ns %s with error: %v", prtb.Name, prtb.Namespace, err)
 				continue
@@ -533,7 +535,7 @@ func (u *AuthUtil) UpdateUser(userList map[string]v3.User, isDryRun bool) {
 	logrus.Infof("RESULT:: Will update %d users", len(userList))
 	for _, user := range userList {
 		if !isDryRun {
-			_, err := u.management.Users("").Update(&user)
+			_, err := u.management.User().Update(&user)
 			if err != nil {
 				logrus.Errorf("failed to update user %s with error: %v", user.Name, err)
 				logrus.Infof("failed user is: %++v", user)
@@ -661,7 +663,7 @@ func GetGroupSearchAttributesForLDAP(config *v32.LdapConfig, uidAttribute string
 }
 
 func GetUsersForUpdate(management managementv3.Interface, authType string) (map[string]v32.User, error) {
-	userList, err := management.Users("").List(metav1.ListOptions{})
+	userList, err := management.User().List(metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -689,11 +691,11 @@ func newCAPool(cert string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-func ReadFromSecret(secrets corev1.SecretInterface, secretInfo string, field string) (string, error) {
+func ReadFromSecret(coreClient v1.CoreV1Interface, secretInfo string, field string) (string, error) {
 	if strings.HasPrefix(secretInfo, SecretsNamespace) {
 		split := strings.SplitN(secretInfo, ":", 2)
 		if len(split) == 2 {
-			secret, err := secrets.GetNamespaced(split[0], split[1], metav1.GetOptions{})
+			secret, err := coreClient.Secrets(split[0]).Get(context.TODO(), split[1], metav1.GetOptions{})
 			if err != nil {
 				return "", fmt.Errorf("error getting secret %s %v", secretInfo, err)
 			}
@@ -810,7 +812,7 @@ func checkUniqueUser(uid, principalUID, newPrincipalID string, oldPrincipalIndex
 }
 
 func getGroupPrincipal(userID, authConfigType string, management managementv3.Interface) ([]v3.Principal, error) {
-	userAttributes, err := management.UserAttributes("").Get(userID, metav1.GetOptions{})
+	userAttributes, err := management.UserAttribute().Get(userID, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}

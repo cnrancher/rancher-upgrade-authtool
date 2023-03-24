@@ -3,10 +3,6 @@ module github.com/JacieChao/rancher-upgrade-authtool
 go 1.19
 
 replace (
-	github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.0.0-20200626085723-c448ada63d83
-	github.com/rancher/prometheus-auth/pkg/data => github.com/cnrancher/prometheus-auth/pkg/data v0.0.0-20201013075525-c015fa82fdd7
-	github.com/rancher/prometheus-auth/pkg/prom => github.com/cnrancher/prometheus-auth/pkg/prom v0.0.0-20201013075525-c015fa82fdd7
-	github.com/rancher/rancher => github.com/cnrancher/pandaria v0.0.0-20230208043957-dd70dcb4c6e9
 	github.com/rancher/rancher/pkg/apis => github.com/cnrancher/pandaria/pkg/apis v0.0.0-20230208043957-dd70dcb4c6e9
 	github.com/rancher/rancher/pkg/client => github.com/cnrancher/pandaria/pkg/client v0.0.0-20230208043957-dd70dcb4c6e9
 	k8s.io/api => k8s.io/api v0.25.4
@@ -41,9 +37,10 @@ require (
 	github.com/go-ldap/ldap/v3 v3.4.1
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pkg/errors v0.9.1
-	github.com/rancher/rancher v0.0.0
+	github.com/rancher/lasso v0.0.0-20221227210133-6ea88ca2fbcc
 	github.com/rancher/rancher/pkg/apis v0.0.0
 	github.com/rancher/rancher/pkg/client v0.0.0
+	github.com/rancher/wrangler v1.1.0
 	github.com/sirupsen/logrus v1.9.0
 	github.com/urfave/cli v1.22.9
 	gomodules.xyz/jsonpatch/v2 v2.2.0
@@ -61,6 +58,7 @@ require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.8.0 // indirect
+	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.3 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
@@ -77,7 +75,6 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/mailru/easyjson v0.7.6 // indirect
-	github.com/matryer/moq v0.0.0-20200607124540-4638a53893e6 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -90,16 +87,15 @@ require (
 	github.com/rancher/eks-operator v1.2.0-rc2 // indirect
 	github.com/rancher/fleet/pkg/apis v0.0.0-20230123175930-d296259590be // indirect
 	github.com/rancher/gke-operator v1.1.5 // indirect
-	github.com/rancher/lasso v0.0.0-20221227210133-6ea88ca2fbcc // indirect
 	github.com/rancher/norman v0.0.0-20230110004459-34230bb2787c // indirect
 	github.com/rancher/rke v1.4.3-rc6 // indirect
-	github.com/rancher/wrangler v1.0.2 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/mod v0.6.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220628200809-02e64fa58f26 // indirect
+	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
@@ -112,6 +108,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.25.4 // indirect
 	k8s.io/apiserver v0.25.4 // indirect
+	k8s.io/code-generator v0.25.4 // indirect
 	k8s.io/gengo v0.0.0-20211129171323-c02415ce4185 // indirect
 	k8s.io/klog/v2 v2.70.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20220803162953-67bda5d908f1 // indirect
