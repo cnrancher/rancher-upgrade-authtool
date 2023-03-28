@@ -37,11 +37,7 @@ const (
 )
 
 type Config struct {
-	Server         string
-	Port           int64
-	UserName       string
-	Password       string
-	BaseDN         string
+	RestConfig     *rest.Config
 	KubeConfig     string
 	AuthType       string
 	AuthConfigType string
@@ -489,17 +485,24 @@ func (u *AuthUtil) UpdateCRTB(crtbList []v3.ClusterRoleTemplateBinding, isDryRun
 	for _, crtb := range crtbList {
 		if !isDryRun {
 			// create a new one
-			newCRTB := crtb.DeepCopy()
-			newCRTB.Name = ""
-			newCRTB.ResourceVersion = ""
-			_, err := u.management.ClusterRoleTemplateBinding().Create(newCRTB)
+			newCRTB := &v3.ClusterRoleTemplateBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: crtb.GenerateName,
+					Namespace:    crtb.Namespace,
+				},
+				RoleTemplateName:   crtb.RoleTemplateName,
+				UserPrincipalName:  crtb.UserPrincipalName,
+				GroupPrincipalName: crtb.GroupPrincipalName,
+				ClusterName:        crtb.ClusterName,
+			}
+			err := u.management.ClusterRoleTemplateBinding().Delete(crtb.Namespace, crtb.Name, &metav1.DeleteOptions{})
 			if err != nil {
-				logrus.Errorf("failed to update crtb %s, ns %s with error: %v", crtb.Name, crtb.Namespace, err)
+				logrus.Errorf("failed to remove old crtb %++v with error: %v", crtb, err)
 				continue
 			}
-			err = u.management.ClusterRoleTemplateBinding().Delete(crtb.Namespace, crtb.Name, &metav1.DeleteOptions{})
+			_, err = u.management.ClusterRoleTemplateBinding().Create(newCRTB)
 			if err != nil {
-				logrus.Errorf("failed to remove old crtb %s, ns %s with error: %v", crtb.Name, crtb.Namespace, err)
+				logrus.Errorf("failed to create new crtb %++v with error: %v", newCRTB, err)
 				continue
 			}
 		} else {
@@ -512,17 +515,24 @@ func (u *AuthUtil) UpdatePRTB(prtbList []v3.ProjectRoleTemplateBinding, isDryRun
 	logrus.Infof("RESULT:: Will update %d prtb", len(prtbList))
 	for _, prtb := range prtbList {
 		if !isDryRun {
-			newPRTB := prtb.DeepCopy()
-			newPRTB.Name = ""
-			newPRTB.ResourceVersion = ""
-			_, err := u.management.ProjectRoleTemplateBinding().Create(newPRTB)
+			newPRTB := &v3.ProjectRoleTemplateBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: prtb.GenerateName,
+					Namespace:    prtb.Namespace,
+				},
+				RoleTemplateName:   prtb.RoleTemplateName,
+				UserPrincipalName:  prtb.UserPrincipalName,
+				GroupPrincipalName: prtb.GroupPrincipalName,
+				ProjectName:        prtb.ProjectName,
+			}
+			err := u.management.ProjectRoleTemplateBinding().Delete(prtb.Namespace, prtb.Name, &metav1.DeleteOptions{})
 			if err != nil {
-				logrus.Errorf("failed to update prtb %s, ns %s with error: %v", prtb.Name, prtb.Namespace, err)
+				logrus.Errorf("remove old prtb %++v error: %v", prtb, err)
 				continue
 			}
-			err = u.management.ProjectRoleTemplateBinding().Delete(prtb.Namespace, prtb.Name, &metav1.DeleteOptions{})
+			_, err = u.management.ProjectRoleTemplateBinding().Create(newPRTB)
 			if err != nil {
-				logrus.Errorf("failed to update prtb %s, ns %s with error: %v", prtb.Name, prtb.Namespace, err)
+				logrus.Errorf("failed to create new prtb %++v with error: %v", prtb, err)
 				continue
 			}
 		} else {
@@ -551,7 +561,9 @@ func GetConfig(c *Config) (*rest.Config, error) {
 	if c.KubeConfig != "" {
 		return clientcmd.BuildConfigFromFlags("", c.KubeConfig)
 	}
-
+	if c.RestConfig != nil {
+		return c.RestConfig, nil
+	}
 	if config, err := rest.InClusterConfig(); err == nil {
 		if config.BearerToken == "" {
 			tokenBytes, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
