@@ -1,16 +1,17 @@
 package tool
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"strings"
 
 	managementv3 "github.com/JacieChao/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
 	"github.com/mitchellh/mapstructure"
 	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v3client "github.com/rancher/rancher/pkg/client/generated/management/v3"
-	"github.com/rancher/wrangler/pkg/unstructured"
 	"github.com/sirupsen/logrus"
 	"gomodules.xyz/jsonpatch/v2"
 
@@ -37,7 +38,7 @@ func (au *ADAuthTool) NewAuthTool(management managementv3.Interface, coreClient 
 	au.management = management
 	au.coreClient = coreClient
 	au.client = client
-	adConfig, caPool, err := GetActiveDirectoryConfig(management, coreClient)
+	adConfig, caPool, err := GetActiveDirectoryConfig(au.client, au.coreClient)
 	if err != nil {
 		return err
 	}
@@ -133,17 +134,17 @@ func (au *ADAuthTool) PrintManualCheckData() {
 	au.print()
 }
 
-func GetActiveDirectoryConfig(management managementv3.Interface, coreClient v1.CoreV1Interface) (*v32.ActiveDirectoryConfig, *x509.CertPool, error) {
-	authConfigObj, err := management.AuthConfig().Get(ActiveDirectoryAuth, metav1.GetOptions{})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to retrieve ActiveDirectoryConfig, error: %v", err)
+func GetActiveDirectoryConfig(client dynamic.Interface, coreClient v1.CoreV1Interface) (*v32.ActiveDirectoryConfig, *x509.CertPool, error) {
+	var gvr = schema.GroupVersionResource{
+		Group:    "management.cattle.io",
+		Version:  "v3",
+		Resource: "authconfigs",
 	}
-
-	u, err := unstructured.ToUnstructured(authConfigObj)
+	authConfigObj, err := client.Resource(gvr).Get(context.TODO(), ActiveDirectoryAuth, metav1.GetOptions{})
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to retrieve openldap config, cannot read k8s Unstructured data")
+		return nil, nil, fmt.Errorf("failed to retrieve openldap config, error: %v", err)
 	}
-	storedADConfigMap := u.UnstructuredContent()
+	storedADConfigMap := authConfigObj.UnstructuredContent()
 
 	storedADConfig := &v32.ActiveDirectoryConfig{}
 	mapstructure.Decode(storedADConfigMap, storedADConfig)

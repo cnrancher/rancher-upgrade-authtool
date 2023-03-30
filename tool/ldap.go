@@ -39,7 +39,7 @@ func (l *LDAPAuthTool) NewAuthTool(management managementv3.Interface, coreClient
 	l.management = management
 	l.coreClient = coreClient
 	l.client = client
-	ldapConfig, caPool, err := GetLDAPConfig(l.client, coreClient)
+	ldapConfig, caPool, err := GetLDAPConfig(l.client, l.coreClient)
 	if err != nil {
 		return err
 	}
