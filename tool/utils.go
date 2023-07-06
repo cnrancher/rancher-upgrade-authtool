@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -108,7 +109,7 @@ func (u *AuthUtil) prepareUsers(list map[string]v3.User, authType string) map[st
 		oldPrincipalIndex, hasFinishedSync := checkHasUIDAttribute(principalIDs, userScopeType, authType)
 		if !hasFinishedSync {
 			principalID := principalIDs[oldPrincipalIndex]
-			_, principalUID, uid, err := generateNewPrincipalByDN(u.conn, principalID, userScopeType, u.userObjectFilter, u.userUniqueAttribute, u.userSearchAttribute)
+			principalUID, uid, err := u.prepareForNewPrincipal(principalID, userScopeType, "")
 			if err != nil {
 				if strings.EqualFold(err.Error(), NoResultFoundError) {
 					logrus.Warnf("No identies found for user %s using current principal: %s", userID, principalID)
@@ -187,8 +188,7 @@ func (u *AuthUtil) prepareGRB(grbList []v3.GlobalRoleBinding, groupScopeType str
 	for _, grb := range grbList {
 		if grb.GroupPrincipalName != "" && strings.HasPrefix(grb.GroupPrincipalName, groupScopeType) {
 			principalID := grb.GroupPrincipalName
-			_, principalUID, _, err := generateNewPrincipalByDN(u.conn, principalID, groupScopeType,
-				u.groupObjectFilter, u.groupUniqueAttribute, u.groupSearchAttribute)
+			principalUID, _, err := u.prepareForNewPrincipal(principalID, "", groupScopeType)
 			if err != nil {
 				if strings.EqualFold(err.Error(), NoResultFoundError) {
 					logrus.Warnf("No identies found using current principalID: %s for grb %s", principalID, grb.Name)
@@ -231,37 +231,29 @@ func (u *AuthUtil) prepareCRTB(crtbList []v3.ClusterRoleTemplateBinding, userSco
 	failedCRTB := []v3.ClusterRoleTemplateBinding{}
 	for _, crtb := range crtbList {
 		var principalID string
-		if crtb.UserPrincipalName != "" && strings.HasPrefix(crtb.UserPrincipalName, userScopeType) {
+		if crtb.UserPrincipalName != "" {
 			principalID = crtb.UserPrincipalName
-			_, principalUID, _, err := generateNewPrincipalByDN(u.conn, principalID, userScopeType, u.userObjectFilter,
-				u.userUniqueAttribute, u.userSearchAttribute)
-			if err != nil {
-				if strings.EqualFold(err.Error(), NoResultFoundError) {
-					logrus.Warnf("No identies found using current principal %s for crtb %s, ns %s", principalID, crtb.Name, crtb.Namespace)
-					failedCRTB = append(failedCRTB, crtb)
-				} else {
-					logrus.Errorf("failed to find user using principal %s for crtb %s, ns %s, err: %v", principalID, crtb.Name, crtb.Namespace, err)
-				}
-				continue
-			}
-			crtb.UserPrincipalName = principalUID
-		} else if crtb.GroupPrincipalName != "" && strings.HasPrefix(crtb.GroupPrincipalName, groupScopeType) {
+		} else if crtb.GroupPrincipalName != "" {
 			principalID = crtb.GroupPrincipalName
-			_, principalUID, _, err := generateNewPrincipalByDN(u.conn, principalID, groupScopeType, u.groupObjectFilter,
-				u.groupUniqueAttribute, u.groupSearchAttribute)
-			if err != nil {
-				if strings.EqualFold(err.Error(), NoResultFoundError) {
-					logrus.Warnf("No identies found using current principal %s for crtb %s, ns %s", principalID, crtb.Name, crtb.Namespace)
-					failedCRTB = append(failedCRTB, crtb)
-				} else {
-					logrus.Errorf("failed to find group using principal %s for crtb %s, ns %s, err: %v", principalID, crtb.Name, crtb.Namespace, err)
-				}
-				continue
-			}
-			crtb.GroupPrincipalName = principalUID
 		}
 		if principalID == "" {
 			continue
+		}
+		principalUID, _, err := u.prepareForNewPrincipal(principalID, userScopeType, groupScopeType)
+		if err != nil {
+			if strings.EqualFold(err.Error(), NoResultFoundError) {
+				logrus.Warnf("No identies found using current principal %s for crtb %s, ns %s", principalID, crtb.Name, crtb.Namespace)
+				failedCRTB = append(failedCRTB, crtb)
+			} else {
+				logrus.Errorf("failed to find user using principal %s for crtb %s, ns %s, err: %v", principalID, crtb.Name, crtb.Namespace, err)
+			}
+			continue
+		}
+
+		if crtb.UserPrincipalName != "" {
+			crtb.UserPrincipalName = principalUID
+		} else if crtb.GroupPrincipalName != "" {
+			crtb.GroupPrincipalName = principalUID
 		}
 		preparedCRTB = append(preparedCRTB, crtb)
 	}
@@ -311,38 +303,32 @@ func (u *AuthUtil) preparePRTB(prtbList []v3.ProjectRoleTemplateBinding, userSco
 	failedPRTB := []v3.ProjectRoleTemplateBinding{}
 	for _, prtb := range prtbList {
 		var principalID string
-		if prtb.UserPrincipalName != "" && strings.HasPrefix(prtb.UserPrincipalName, userScopeType) {
+		if prtb.UserPrincipalName != "" {
 			principalID = prtb.UserPrincipalName
-			_, principalUID, _, err := generateNewPrincipalByDN(u.conn, principalID, userScopeType, u.userObjectFilter,
-				u.userUniqueAttribute, u.userSearchAttribute)
-			if err != nil {
-				if strings.EqualFold(err.Error(), NoResultFoundError) {
-					logrus.Warnf("No identies found using current principalID %s for prtb %s, ns %s", principalID, prtb.Name, prtb.Namespace)
-					failedPRTB = append(failedPRTB, prtb)
-				} else {
-					logrus.Errorf("failed to get user using principalID %s for prtb %s, ns %s, err: %v", principalID, prtb.Name, prtb.Namespace, err)
-				}
-				continue
-			}
-			prtb.UserPrincipalName = principalUID
-		} else if prtb.GroupPrincipalName != "" && strings.HasPrefix(prtb.GroupPrincipalName, groupScopeType) {
+		} else if prtb.GroupPrincipalName != "" {
 			principalID = prtb.GroupPrincipalName
-			_, principalUID, _, err := generateNewPrincipalByDN(u.conn, principalID, groupScopeType,
-				u.groupObjectFilter, u.groupUniqueAttribute, u.groupSearchAttribute)
-			if err != nil {
-				if strings.EqualFold(err.Error(), NoResultFoundError) {
-					logrus.Warnf("No identies found using current principalID: %s for prtb %s, ns %s", principalID, prtb.Name, prtb.Namespace)
-					failedPRTB = append(failedPRTB, prtb)
-				} else {
-					logrus.Errorf("failed to get group using principalID %s for prtb %s, ns %s, err: %v", principalID, prtb.Name, prtb.Namespace, err)
-				}
-				continue
-			}
-			prtb.GroupPrincipalName = principalUID
 		}
 		if principalID == "" {
 			continue
 		}
+
+		principalUID, _, err := u.prepareForNewPrincipal(principalID, userScopeType, groupScopeType)
+		if err != nil {
+			if strings.EqualFold(err.Error(), NoResultFoundError) {
+				logrus.Warnf("No identies found using current principalID %s for prtb %s, ns %s", principalID, prtb.Name, prtb.Namespace)
+				failedPRTB = append(failedPRTB, prtb)
+			} else {
+				logrus.Errorf("failed to get user using principalID %s for prtb %s, ns %s, err: %v", principalID, prtb.Name, prtb.Namespace, err)
+			}
+			continue
+		}
+
+		if prtb.UserPrincipalName != "" {
+			prtb.UserPrincipalName = principalUID
+		} else if prtb.GroupPrincipalName != "" {
+			prtb.GroupPrincipalName = principalUID
+		}
+
 		preparedPRTB = append(preparedPRTB, prtb)
 	}
 
@@ -396,8 +382,8 @@ func (u *AuthUtil) prepareAllowedPrincipals(userScopeType, groupScopeType string
 			continue
 		}
 		logrus.Infof("Prepare update for allowedPrincipal %s", allowedPrincipal)
-		if strings.HasPrefix(allowedPrincipal, fmt.Sprintf("%s://", userScopeType)) {
-			oldPrincipal, newPrincipal, _, err := prepareForNewPrincipal(u.conn, allowedPrincipal, fmt.Sprintf("%s://", userScopeType), u.userObjectFilter, u.userUniqueAttribute, u.userSearchAttribute)
+		newPrincipal, _, err := u.prepareForNewPrincipal(allowedPrincipal, userScopeType, groupScopeType)
+		if err != nil {
 			if err != nil {
 				if strings.EqualFold(err.Error(), NoResultFoundError) {
 					logrus.Warnf("No identies found using current principal %s ", allowedPrincipal)
@@ -406,21 +392,8 @@ func (u *AuthUtil) prepareAllowedPrincipals(userScopeType, groupScopeType string
 				}
 				return nil, err
 			}
-			logrus.Infof("Old user allowedPrincipal %s will be replaced with new uniqueID: %s", oldPrincipal, newPrincipal)
-			newAllowedPrincipals = append(newAllowedPrincipals, newPrincipal)
-		} else {
-			oldPrincipal, newPrincipal, _, err := prepareForNewPrincipal(u.conn, allowedPrincipal, fmt.Sprintf("%s://", groupScopeType), u.groupObjectFilter, u.groupUniqueAttribute, u.groupSearchAttribute)
-			if err != nil {
-				if strings.EqualFold(err.Error(), NoResultFoundError) {
-					logrus.Warnf("No identies found using current principal %s ", allowedPrincipal)
-					failedPrincipalIDs = append(failedPrincipalIDs, allowedPrincipal)
-					continue
-				}
-				return nil, err
-			}
-			logrus.Infof("Old group allowedPrincipal %s will be replaced with new uniqueID: %s", oldPrincipal, newPrincipal)
-			newAllowedPrincipals = append(newAllowedPrincipals, newPrincipal)
 		}
+		newAllowedPrincipals = append(newAllowedPrincipals, newPrincipal)
 	}
 
 	manualPrincipal := []string{}
@@ -560,6 +533,50 @@ func (u *AuthUtil) UpdateUser(userList map[string]v3.User, isDryRun bool) {
 			logrus.Infof("DRY_RUN:: User %s need to sync by principalIDs: %v", user.Name, user.PrincipalIDs)
 		}
 	}
+}
+
+func (u *AuthUtil) prepareForNewPrincipal(principalID, userScopeType, groupScopeType string) (string, string, error) {
+	externalID, scope, err := GetDNAndScopeFromPrincipalID(principalID)
+	if err != nil {
+		return "", "", err
+	}
+
+	var filter, searchString, uniqueAttribute, scopeType string
+	var searchCode int
+	var searchAttribute []string
+
+	if !strings.HasSuffix(principalID, u.baseDN) {
+		filter = fmt.Sprintf("(&%s(%v=%v))", u.userObjectFilter, "objectGUID", EscapeUUID(externalID))
+		searchCode = ldapv3.ScopeWholeSubtree
+		searchString = u.baseDN
+	} else {
+		searchCode = ldapv3.ScopeBaseObject
+		searchString = externalID
+	}
+
+	if strings.HasPrefix(principalID, fmt.Sprintf("%s://", userScopeType)) {
+		if filter == "" {
+			filter = u.userObjectFilter
+		}
+		scopeType = userScopeType
+		uniqueAttribute = u.userUniqueAttribute
+		searchAttribute = u.userSearchAttribute
+	} else {
+		scopeType = groupScopeType
+		filter = u.groupObjectFilter
+		uniqueAttribute = u.groupUniqueAttribute
+		searchAttribute = u.groupSearchAttribute
+	}
+
+	results, err := getLdapUserForUpdate(u.conn, searchString, filter, searchCode, searchAttribute)
+	if err != nil {
+		return "", "", err
+	}
+
+	entry := results.Entries[0]
+	_, newPrincipalID, uniqueID := getUniqueAttribute(entry, scopeType, scope, uniqueAttribute)
+	logrus.Infof("Old user allowedPrincipal %s will be replaced with new uniqueID: %s", principalID, uniqueID)
+	return newPrincipalID, uniqueID, nil
 }
 
 func GetConfig(c *Config) (*rest.Config, error) {
@@ -753,21 +770,21 @@ func generateNewPrincipalForDNChanged(lConn *ldapv3.Conn, principalID, scopeType
 	return principalIDOfDN, principalOfUID, uniqueID, results, nil
 }
 
-func generateNewPrincipalByDN(lConn *ldapv3.Conn, principalID, scopeType,
-	filter, uniqueAttribute string, searchAttribute []string) (string, string, string, error) {
-	externalID, scope, err := GetDNAndScopeFromPrincipalID(principalID)
-	if err != nil {
-		return "", "", "", err
-	}
-
-	results, err := getLdapUserForUpdate(lConn, externalID, filter, ldapv3.ScopeBaseObject, searchAttribute)
-	if err != nil {
-		return "", "", "", err
-	}
-	entry := results.Entries[0]
-	principalIDOfDN, principalOfUID, uniqueID := getUniqueAttribute(entry, scopeType, scope, uniqueAttribute)
-	return principalIDOfDN, principalOfUID, uniqueID, nil
-}
+//func generateNewPrincipalByDN(lConn *ldapv3.Conn, principalID, scopeType,
+//	filter, uniqueAttribute string, searchAttribute []string) (string, string, string, error) {
+//	externalID, scope, err := GetDNAndScopeFromPrincipalID(principalID)
+//	if err != nil {
+//		return "", "", "", err
+//	}
+//
+//	results, err := getLdapUserForUpdate(lConn, externalID, filter, ldapv3.ScopeBaseObject, searchAttribute)
+//	if err != nil {
+//		return "", "", "", err
+//	}
+//	entry := results.Entries[0]
+//	principalIDOfDN, principalOfUID, uniqueID := getUniqueAttribute(entry, scopeType, scope, uniqueAttribute)
+//	return principalIDOfDN, principalOfUID, uniqueID, nil
+//}
 
 func checkHasUIDAttribute(principalIDs []string, userScopeType, authConfigType string) (int, bool) {
 	var oldPrincipalIndex int
@@ -880,4 +897,21 @@ func checkForGroups(userID, authConfigType string, management managementv3.Inter
 		}
 	}
 	return checkEntries, nil
+}
+
+// EscapeUUID will take a UUID string in string form and will add backslashes to every 2nd character.
+// The returned result is the string that needs to be added to the LDAP filter to properly filter
+// by objectGUID, which is stored as binary data.
+func EscapeUUID(s string) string {
+	var buffer bytes.Buffer
+	var n1 = 1
+	var l1 = len(s) - 1
+	buffer.WriteRune('\\')
+	for i, r := range s {
+		buffer.WriteRune(r)
+		if i%2 == n1 && i != l1 {
+			buffer.WriteRune('\\')
+		}
+	}
+	return buffer.String()
 }

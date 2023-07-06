@@ -166,22 +166,6 @@ func Upgrade(c *Config) error {
 	return nil
 }
 
-func prepareForNewPrincipal(lConn *ldapv3.Conn, principalID, scopeType,
-	filter, uniqueAttribute string, searchAttribute []string) (oldPrincipalID string, newPrincipalID string, uniqueID string, err error) {
-	externalID, scope, err := GetDNAndScopeFromPrincipalID(principalID)
-	if err != nil {
-		return "", "", "", err
-	}
-
-	results, err := getLdapUserForUpdate(lConn, externalID, filter, ldapv3.ScopeBaseObject, searchAttribute)
-	if err != nil {
-		return "", "", "", err
-	}
-	entry := results.Entries[0]
-	oldPrincipalID, newPrincipalID, uniqueID = getUniqueAttribute(entry, scopeType, scope, uniqueAttribute)
-	return
-}
-
 func getLdapUserForUpdate(lConn *ldapv3.Conn, distinguishedName, filter string, scopeBaseObject int, searchAttributes []string) (*ldapv3.SearchResult, error) {
 	fmt.Printf("Query for distinguishedName %s, filter %s \n", distinguishedName, filter)
 	search := ldapv3.NewSearchRequest(distinguishedName,
