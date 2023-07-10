@@ -554,7 +554,7 @@ func (u *AuthUtil) prepareForNewPrincipal(principalID, userScopeType, groupScope
 		searchString = externalID
 	}
 
-	if strings.HasPrefix(principalID, fmt.Sprintf("%s://", userScopeType)) {
+	if strings.HasPrefix(principalID, fmt.Sprintf("%s", userScopeType)) {
 		if filter == "" {
 			filter = u.userObjectFilter
 		}
