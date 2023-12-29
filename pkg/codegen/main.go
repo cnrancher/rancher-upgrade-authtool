@@ -15,6 +15,7 @@ func main() {
 		Boilerplate:   "scripts/boilerplate.go.txt",
 		Groups: map[string]args.Group{
 			"management.cattle.io": {
+				PackageName: "management.cattle.io",
 				Types: []interface{}{
 					v3.Cluster{},
 					v3.AuthConfig{},

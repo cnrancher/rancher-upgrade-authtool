@@ -20,6 +20,7 @@ package v3
 import (
 	"github.com/rancher/lasso/pkg/controller"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
+	"github.com/rancher/wrangler/pkg/generic"
 	"github.com/rancher/wrangler/pkg/schemes"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -48,24 +49,30 @@ type version struct {
 	controllerFactory controller.SharedControllerFactory
 }
 
-func (c *version) AuthConfig() AuthConfigController {
-	return NewAuthConfigController(schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "AuthConfig"}, "authconfigs", false, c.controllerFactory)
+func (v *version) AuthConfig() AuthConfigController {
+	return generic.NewNonNamespacedController[*v3.AuthConfig, *v3.AuthConfigList](schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "AuthConfig"}, "authconfigs", v.controllerFactory)
 }
-func (c *version) Cluster() ClusterController {
-	return NewClusterController(schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "Cluster"}, "clusters", false, c.controllerFactory)
+
+func (v *version) Cluster() ClusterController {
+	return generic.NewNonNamespacedController[*v3.Cluster, *v3.ClusterList](schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "Cluster"}, "clusters", v.controllerFactory)
 }
-func (c *version) ClusterRoleTemplateBinding() ClusterRoleTemplateBindingController {
-	return NewClusterRoleTemplateBindingController(schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "ClusterRoleTemplateBinding"}, "clusterroletemplatebindings", true, c.controllerFactory)
+
+func (v *version) ClusterRoleTemplateBinding() ClusterRoleTemplateBindingController {
+	return generic.NewController[*v3.ClusterRoleTemplateBinding, *v3.ClusterRoleTemplateBindingList](schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "ClusterRoleTemplateBinding"}, "clusterroletemplatebindings", true, v.controllerFactory)
 }
-func (c *version) GlobalRoleBinding() GlobalRoleBindingController {
-	return NewGlobalRoleBindingController(schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "GlobalRoleBinding"}, "globalrolebindings", false, c.controllerFactory)
+
+func (v *version) GlobalRoleBinding() GlobalRoleBindingController {
+	return generic.NewNonNamespacedController[*v3.GlobalRoleBinding, *v3.GlobalRoleBindingList](schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "GlobalRoleBinding"}, "globalrolebindings", v.controllerFactory)
 }
-func (c *version) ProjectRoleTemplateBinding() ProjectRoleTemplateBindingController {
-	return NewProjectRoleTemplateBindingController(schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "ProjectRoleTemplateBinding"}, "projectroletemplatebindings", true, c.controllerFactory)
+
+func (v *version) ProjectRoleTemplateBinding() ProjectRoleTemplateBindingController {
+	return generic.NewController[*v3.ProjectRoleTemplateBinding, *v3.ProjectRoleTemplateBindingList](schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "ProjectRoleTemplateBinding"}, "projectroletemplatebindings", true, v.controllerFactory)
 }
-func (c *version) User() UserController {
-	return NewUserController(schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "User"}, "users", false, c.controllerFactory)
+
+func (v *version) User() UserController {
+	return generic.NewNonNamespacedController[*v3.User, *v3.UserList](schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "User"}, "users", v.controllerFactory)
 }
-func (c *version) UserAttribute() UserAttributeController {
-	return NewUserAttributeController(schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "UserAttribute"}, "userattributes", false, c.controllerFactory)
+
+func (v *version) UserAttribute() UserAttributeController {
+	return generic.NewNonNamespacedController[*v3.UserAttribute, *v3.UserAttributeList](schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "UserAttribute"}, "userattributes", v.controllerFactory)
 }

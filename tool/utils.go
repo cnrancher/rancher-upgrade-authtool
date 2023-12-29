@@ -33,8 +33,6 @@ const (
 	NoResultFoundError      = "No identities can be retrieved"
 	MutipleResultFoundError = "Get more than one results"
 	SecretsNamespace        = "cattle-global-data"
-	UserUIDScope            = "_user_uid"
-	GroupUIDScope           = "_group_uid"
 )
 
 type Config struct {
@@ -442,9 +440,23 @@ func (u *AuthUtil) UpdateGRB(grbList []v3.GlobalRoleBinding, isDryRun bool) {
 	logrus.Infof("RESULT:: Will update %d grb", len(grbList))
 	for _, grb := range grbList {
 		if !isDryRun {
-			_, err := u.management.GlobalRoleBinding().Update(&grb)
+			// webhook will block the update of global role binding, change to delete and create a new one
+			newGrb := &v3.GlobalRoleBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: grb.GenerateName,
+				},
+				UserName:           grb.UserName,
+				GroupPrincipalName: grb.GroupPrincipalName,
+				GlobalRoleName:     grb.GlobalRoleName,
+			}
+			err := u.management.GlobalRoleBinding().Delete(grb.Name, &metav1.DeleteOptions{})
 			if err != nil {
-				logrus.Errorf("failed to update grb %s, with error: %v", grb.Name, err)
+				logrus.Errorf("failed to remove old grb %++v with error: %v", grb, err)
+				continue
+			}
+			_, err = u.management.GlobalRoleBinding().Create(newGrb)
+			if err != nil {
+				logrus.Errorf("failed to create new grb %++v with error: %v", newGrb, err)
 				continue
 			}
 		} else {
