@@ -6,32 +6,32 @@ replace (
 	github.com/rancher/rancher/pkg/apis => github.com/cnrancher/pandaria/pkg/apis v0.0.0-20231226075135-d3eff9bf0a89
 	github.com/rancher/rancher/pkg/client => github.com/cnrancher/pandaria/pkg/client v0.0.0-20231226075135-d3eff9bf0a89
 	github.com/rancher/wrangler v1.1.1 => github.com/rancher/wrangler v1.1.1-0.20230831050635-df1bd5aae9df
-	k8s.io/api => k8s.io/api v0.27.4
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.27.4
-	k8s.io/apimachinery => k8s.io/apimachinery v0.27.4
-	k8s.io/apiserver => k8s.io/apiserver v0.27.4
-	k8s.io/cli-runtime => k8s.io/cli-runtime v0.27.4
+	k8s.io/api => k8s.io/api v0.27.8
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.27.8
+	k8s.io/apimachinery => k8s.io/apimachinery v0.27.8
+	k8s.io/apiserver => k8s.io/apiserver v0.27.8
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.27.8
 	k8s.io/client-go => github.com/rancher/client-go v1.27.4-rancher1
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.27.4
-	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.27.4
-	k8s.io/code-generator => k8s.io/code-generator v0.27.4
-	k8s.io/component-base => k8s.io/component-base v0.27.4
-	k8s.io/component-helpers => k8s.io/component-helpers v0.27.4
-	k8s.io/controller-manager => k8s.io/controller-manager v0.27.4
-	k8s.io/cri-api => k8s.io/cri-api v0.27.4
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.27.4
-	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.27.4
-	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.27.4
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.27.4
-	k8s.io/kube-proxy => k8s.io/kube-proxy v0.27.4
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.27.4
-	k8s.io/kubectl => k8s.io/kubectl v0.27.4
-	k8s.io/kubelet => k8s.io/kubelet v0.27.4
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.27.4
-	k8s.io/metrics => k8s.io/metrics v0.27.4
-	k8s.io/mount-utils => k8s.io/mount-utils v0.27.4
-	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.27.4
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.27.4
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.27.8
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.27.8
+	k8s.io/code-generator => k8s.io/code-generator v0.27.8
+	k8s.io/component-base => k8s.io/component-base v0.27.8
+	k8s.io/component-helpers => k8s.io/component-helpers v0.27.8
+	k8s.io/controller-manager => k8s.io/controller-manager v0.27.8
+	k8s.io/cri-api => k8s.io/cri-api v0.27.8
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.27.8
+	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.27.8
+	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.27.8
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.27.8
+	k8s.io/kube-proxy => k8s.io/kube-proxy v0.27.8
+	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.27.8
+	k8s.io/kubectl => k8s.io/kubectl v0.27.8
+	k8s.io/kubelet => k8s.io/kubelet v0.27.8
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.27.8
+	k8s.io/metrics => k8s.io/metrics v0.27.8
+	k8s.io/mount-utils => k8s.io/mount-utils v0.27.8
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.27.8
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.27.8
 )
 
 require (
@@ -45,7 +45,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/urfave/cli v1.22.9
 	gomodules.xyz/jsonpatch/v2 v2.3.0
-	k8s.io/apimachinery v0.27.6
+	k8s.io/apimachinery v0.27.8
 	k8s.io/client-go v12.0.0+incompatible
 )
 
@@ -109,10 +109,10 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.27.6 // indirect
-	k8s.io/apiserver v0.27.6 // indirect
-	k8s.io/code-generator v0.27.5 // indirect
-	k8s.io/component-base v0.27.6 // indirect
+	k8s.io/api v0.27.8 // indirect
+	k8s.io/apiserver v0.27.8 // indirect
+	k8s.io/code-generator v0.27.8 // indirect
+	k8s.io/component-base v0.27.8 // indirect
 	k8s.io/gengo v0.0.0-20230306165830-ab3349d207d4 // indirect
 	k8s.io/klog/v2 v2.100.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20230530175149-33f04d5d6b58 // indirect

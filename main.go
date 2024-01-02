@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -10,11 +11,20 @@ import (
 	"github.com/urfave/cli"
 )
 
+var (
+	Version   = "dev"
+	GitCommit = "HEAD"
+)
+
+func getVersion() string {
+	return fmt.Sprintf("%s (%s)", Version, GitCommit)
+}
+
 func main() {
 	var config tool.Config
 	app := cli.NewApp()
 	app.Name = "Sync AD/LDAP auth config for rancher users"
-	app.Version = "v1.0.0"
+	app.Version = getVersion()
 	app.Commands = []cli.Command{
 		{
 			Name:    "upgrade",
