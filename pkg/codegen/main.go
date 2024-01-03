@@ -11,7 +11,7 @@ import (
 func main() {
 	os.Unsetenv("GOPATH")
 	controllergen.Run(args.Options{
-		OutputPackage: "github.com/JacieChao/rancher-upgrade-authtool/pkg/generated",
+		OutputPackage: "github.com/cnrancher/rancher-upgrade-authtool/pkg/generated",
 		Boilerplate:   "scripts/boilerplate.go.txt",
 		Groups: map[string]args.Group{
 			"management.cattle.io": {

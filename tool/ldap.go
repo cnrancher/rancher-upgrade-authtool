@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	managementv3 "github.com/JacieChao/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
+	managementv3 "github.com/cnrancher/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
 	"github.com/mitchellh/mapstructure"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"

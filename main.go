@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/JacieChao/rancher-upgrade-authtool/tool"
+	"github.com/cnrancher/rancher-upgrade-authtool/tool"
 	"github.com/urfave/cli"
 )
 

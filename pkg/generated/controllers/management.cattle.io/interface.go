@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2024 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ limitations under the License.
 package management
 
 import (
-	v3 "github.com/JacieChao/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
+	v3 "github.com/cnrancher/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
 	"github.com/rancher/lasso/pkg/controller"
 )
 

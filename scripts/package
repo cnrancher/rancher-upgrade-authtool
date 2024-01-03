@@ -3,14 +3,14 @@ set -e
 
 source $(dirname $0)/version
 
+cd $(dirname $0)/..
+
 ARCH=${ARCH:-"amd64"}
 SUFFIX=""
 [ "${ARCH}" != "amd64" ] && SUFFIX="_${ARCH}"
 
-cd $(dirname $0)/../package
-
 TAG=${TAG:-${VERSION}${SUFFIX}}
-REPO=${REPO:-jacie}
+REPO=${REPO:-cnrancher}
 
 if echo $TAG | grep -q dirty; then
     TAG=dev
@@ -20,11 +20,8 @@ if [ -n "$DRONE_TAG" ]; then
     TAG=$DRONE_TAG
 fi
 
-cp ../bin/authtool .
-
 IMAGE=${REPO}/authtool:${TAG}
 
-docker build -t ${IMAGE} .
-echo ${IMAGE} > ../dist/images
+docker build -f package/Dockerfile -t ${IMAGE} .
 echo Built ${IMAGE}
 echo

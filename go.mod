@@ -1,4 +1,4 @@
-module github.com/JacieChao/rancher-upgrade-authtool
+module github.com/cnrancher/rancher-upgrade-authtool
 
 go 1.20
 

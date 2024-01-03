@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	managementv3 "github.com/JacieChao/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
+	managementv3 "github.com/cnrancher/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
 	ldapv3 "github.com/go-ldap/ldap/v3"
 	"github.com/pkg/errors"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"

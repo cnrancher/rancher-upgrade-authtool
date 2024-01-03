@@ -1,7 +1,14 @@
-FROM registry.suse.com/bci/bci-base:15.4
+FROM registry.suse.com/bci/bci-micro:15.5
 
-COPY authtool /usr/bin/
+ARG user=authtool
 
-VOLUME /usr/bin
+RUN echo "$user:x:1000:1000::/home/$user:/bin/bash" >> /etc/passwd && \
+    echo "$user:x:1000:" >> /etc/group && \
+    mkdir /home/$user && \
+    chown -R $user:$user /home/$user
+
+COPY bin/authtool /usr/bin/
+
+USER $user
 
 CMD ["authtool"]

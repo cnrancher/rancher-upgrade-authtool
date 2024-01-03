@@ -8,7 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"strings"
 
-	managementv3 "github.com/JacieChao/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
+	managementv3 "github.com/cnrancher/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
 	"github.com/mitchellh/mapstructure"
 	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v3client "github.com/rancher/rancher/pkg/client/generated/management/v3"
