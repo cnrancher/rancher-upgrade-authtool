@@ -51,7 +51,9 @@ authtool --kubeconfig=<kube-config> --auth-type=0 --dry-run=true --log-file=<log
 We also support using upgrade tool by docker. If you're running outside the local cluster, please mount kubeconfig file to container.
 For example:
 ```
-docker run -v /tmp/kubeconfig.yaml:/tmp/kubeconfig.yaml cnrancher/authtool:v2.8-ent authtool --kubeconfig=/tmp/kubeconfig.yaml --dry-run=true --auth-type=1 upgrade
+docker run --entrypoint bash -v $(pwd)/kubeconfig.yaml:/tmp/kubeconfig.yaml -it cnrancher/authtool:v2.8-ent
+# then run command inside the container
+authtool --kubeconfig=/tmp/kubeconfig.yaml --dry-run=true --auth-type=1 upgrade
 ```
 
 > Please using `--dry-run=true` before running the command to make sure running result as expect.
