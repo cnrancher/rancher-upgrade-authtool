@@ -8,7 +8,7 @@ As previous version, we use `DistinguishedNames` attribute as user identifier wh
 
 To fix this, we change to use unique ID attribute of user/group in LDAP/AD.
 
-`rancher-upgrade-authtool` will help you to add new principal attribute to your history users when you upgrading pandaria with LDAP/AD Authentication.
+`rancher-upgrade-authtool` will help you to add new principal attribute to your history users when you are going to upgrade to RPM with LDAP/AD Authentication.
 
 > This step is requisite when you upgrading pandaria from v2.3.3-ent or previous version with LDAP/AD authentication config.
 
@@ -16,9 +16,10 @@ To fix this, we change to use unique ID attribute of user/group in LDAP/AD.
 
 ### Prerequisite
 
-> Please make sure you have done all necessary preparations before upgrading pandaria, such as backup etcd, etc.
+> Please make sure you have done all necessary preparations before upgrading to RPM, such as backup etcd, etc.
 
-- Upgrade pandaria to latest version, e.g. v2.3.6-ent
+- Backup etcd for your local cluster
+- Upgrade RPM to the latest version
 - Re-save AD/LDAP auth config from UI to let the latest configuration work, please login to Rancher Web GUI using local user `admin`(DO NOT using LDAP/AD user to login)
 
 > Important: **please login to Rancher Web GUI using local user `admin`(DO NOT using LDAP/AD user to login)**
@@ -41,6 +42,8 @@ GLOBAL OPTIONS:
 
 ### Start example
 
+Please prepare kubeconfig file that can access to local cluster.
+
 ```
 authtool --kubeconfig=<kube-config> --auth-type=0 --dry-run=true --log-file=<log-file-path> upgrade
 ```
@@ -48,7 +51,7 @@ authtool --kubeconfig=<kube-config> --auth-type=0 --dry-run=true --log-file=<log
 We also support using upgrade tool by docker. If you're running outside the local cluster, please mount kubeconfig file to container.
 For example:
 ```
-docker run -v /tmp/kubeconfig.yaml:/tmp/kubeconfig.yaml jacie/authtool:v2.7-ent2 authtool --kubeconfig=/tmp/kubeconfig.yaml --dry-run=true --auth-type=1 upgrade
+docker run -v /tmp/kubeconfig.yaml:/tmp/kubeconfig.yaml cnrancher/authtool:v2.8-ent authtool --kubeconfig=/tmp/kubeconfig.yaml --dry-run=true --auth-type=1 upgrade
 ```
 
 > Please using `--dry-run=true` before running the command to make sure running result as expect.

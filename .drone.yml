@@ -1,0 +1,63 @@
+---
+kind: pipeline
+type: docker
+name: amd64
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+  - name: build
+    image: rancher/dapper:v0.6.0
+    environment:
+      OAUTH_TOKEN:
+        from_secret: github_token
+    privileged: true
+    commands:
+      - dapper ci
+      - bin/authtool --version
+    volumes:
+      - name: docker
+        path: /var/run/docker.sock
+    when:
+      event:
+        - push
+        - pull_request
+        - tag
+  - name: docker-publish
+    pull: default
+    image: plugins/docker
+    settings:
+      dockerfile: package/Dockerfile
+      password:
+        from_secret: docker_password
+      repo: cnrancher/authtool
+      tag: "${DRONE_TAG}"
+      username:
+        from_secret: docker_username
+    when:
+      event:
+        - tag
+  - name: github_binary_release
+    image: plugins/github-release
+    settings:
+      api_key:
+        from_secret: github_token
+      prerelease: true
+      checksum:
+        - sha256
+      checksum_file: checksum-amd64.txt
+      checksum_flatten: true
+      files:
+        - "bin/authtool"
+    when:
+      event:
+        - tag
+volumes:
+  - name: docker
+    host:
+      path: /var/run/docker.sock
+
+node:
+  instance: agent-amd64
