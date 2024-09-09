@@ -4,8 +4,8 @@ import (
 	"os"
 
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
-	controllergen "github.com/rancher/wrangler/pkg/controller-gen"
-	"github.com/rancher/wrangler/pkg/controller-gen/args"
+	controllergen "github.com/rancher/wrangler/v3/pkg/controller-gen"
+	"github.com/rancher/wrangler/v3/pkg/controller-gen/args"
 )
 
 func main() {
