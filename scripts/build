@@ -5,24 +5,19 @@ source $(dirname $0)/version
 
 cd $(dirname $0)/..
 
-mkdir -p bin
-if [ -n "${DEBUG}" ]; then
-  GCFLAGS="-N -l"
-fi
+echo "VERSION=${VERSION}"
+echo "COMMIT=${COMMIT}"
 
-if [ "$(uname)" != "Darwin" ]; then
-  LINKFLAGS="-extldflags -static"
-  if [ -z "${DEBUG}" ]; then
-    LINKFLAGS="${LINKFLAGS} -s"
-  fi
+mkdir -p bin
+if [ "$(uname)" = "Linux" ]; then
+  LINKFLAGS="-extldflags -static -s"
 fi
 
 if [ "$OAUTH_TOKEN" != "" ]; then
    git config --global url."https://${OAUTH_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 fi
 
-GOPRIVATE="github.com/cnrancher" CGO_ENABLED=0 go build -tags k8s \
-  -gcflags="all=${GCFLAGS}" \
+GOPRIVATE="github.com/cnrancher" CGO_ENABLED=0 GOPRIVATE="github.com/cnrancher" go build -tags k8s \
   -ldflags \
   "-X main.Version=$VERSION
    -X main.GitCommit=$COMMIT $LINKFLAGS" \

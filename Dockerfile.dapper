@@ -3,11 +3,9 @@ FROM registry.suse.com/bci/golang:1.23
 ARG DAPPER_HOST_ARCH
 ENV HOST_ARCH=${DAPPER_HOST_ARCH} ARCH=${DAPPER_HOST_ARCH}
 
-RUN zypper -n install gcc binutils glibc-devel-static ca-certificates git-core wget curl unzip tar vim less file xz gzip sed gawk iproute2 iptables jq
+RUN zypper -n install git docker wget curl vim less file awk jq
 
-RUN zypper install -y -f docker
-
-ENV DAPPER_ENV REPO TAG OAUTH_TOKEN DRONE_TAG
+ENV DAPPER_ENV REPO TAG OAUTH_TOKEN
 ENV DAPPER_SOURCE /go/src/github.com/cnrancher/rancher-upgrade-authtool/
 ENV DAPPER_OUTPUT ./bin ./dist
 ENV DAPPER_DOCKER_SOCKET true
