@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -36,7 +37,8 @@ func main() {
 				} else if config.AuthType == "1" {
 					config.AuthConfigType = tool.OpenLDAPAuth
 				}
-				return tool.Upgrade(&config)
+				ctx := context.Background()
+				return tool.Upgrade(ctx, &config)
 			},
 		},
 	}

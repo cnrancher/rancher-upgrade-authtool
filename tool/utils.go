@@ -6,12 +6,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"reflect"
 	"strings"
 	"time"
 
-	managementv3 "github.com/cnrancher/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
+	"github.com/cnrancher/rancher-upgrade-authtool/client"
 	ldapv3 "github.com/go-ldap/ldap/v3"
+	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
@@ -19,10 +20,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/dynamic"
-	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -45,9 +43,7 @@ type Config struct {
 }
 
 type AuthUtil struct {
-	management           managementv3.Interface
-	coreClient           v1.CoreV1Interface
-	client               dynamic.Interface
+	cli                  *client.Clients
 	conn                 *ldapv3.Conn
 	userUniqueAttribute  string
 	groupUniqueAttribute string
@@ -97,7 +93,7 @@ func (u *AuthUtil) print() {
 	}
 }
 
-func (u *AuthUtil) prepareUsers(list map[string]v3.User, authType string) map[string]v3.User {
+func (u *AuthUtil) prepareUsers(ctx context.Context, list map[string]v3.User, authType string) map[string]v3.User {
 	userScopeType := fmt.Sprintf("%s%s://", authType, UserScope)
 	failedUsers := map[string]v3.User{}
 	preparedUsers := map[string]v3.User{}
@@ -143,7 +139,7 @@ func (u *AuthUtil) prepareUsers(list map[string]v3.User, authType string) map[st
 					continue
 				} else if strings.EqualFold(err.Error(), MutipleResultFoundError) {
 					logrus.Warnf("sync user %s:: find multiple users for principal %s", userID, principalID)
-					checkEntries, err := checkForGroups(userID, authType, u.management, results)
+					checkEntries, err := checkForGroups(ctx, userID, authType, u.cli, results)
 					if err != nil {
 						if apierrors.IsNotFound(err) {
 							logrus.Warnf("Skip for user %s with empty user group", userID)
@@ -431,12 +427,12 @@ func (u *AuthUtil) prepareAllowedPrincipals(userScopeType, groupScopeType string
 	}
 
 	if len(manualPrincipal) > 0 {
-		return nil, fmt.Errorf("couldn't hanle DN changed principals, please manual check for these principals set for Auth provider: %v", manualPrincipal)
+		return nil, fmt.Errorf("couldn't handle DN changed principals, please manual check for these principals set for Auth provider: %v", manualPrincipal)
 	}
 	return newAllowedPrincipals, nil
 }
 
-func (u *AuthUtil) UpdateGRB(grbList []v3.GlobalRoleBinding, isDryRun bool) {
+func (u *AuthUtil) UpdateGRB(ctx context.Context, grbList []v3.GlobalRoleBinding, isDryRun bool) {
 	logrus.Infof("RESULT:: Will update %d grb", len(grbList))
 	for _, grb := range grbList {
 		if !isDryRun {
@@ -449,12 +445,12 @@ func (u *AuthUtil) UpdateGRB(grbList []v3.GlobalRoleBinding, isDryRun bool) {
 				GroupPrincipalName: grb.GroupPrincipalName,
 				GlobalRoleName:     grb.GlobalRoleName,
 			}
-			err := u.management.GlobalRoleBinding().Delete(grb.Name, &metav1.DeleteOptions{})
+			err := u.cli.GlobalRoleBindings.Delete(ctx, "", grb.Name, metav1.DeleteOptions{})
 			if err != nil {
 				logrus.Errorf("failed to remove old grb %++v with error: %v", grb, err)
 				continue
 			}
-			_, err = u.management.GlobalRoleBinding().Create(newGrb)
+			err = u.cli.GlobalRoleBindings.Create(ctx, "", newGrb, nil, metav1.CreateOptions{})
 			if err != nil {
 				logrus.Errorf("failed to create new grb %++v with error: %v", newGrb, err)
 				continue
@@ -465,7 +461,7 @@ func (u *AuthUtil) UpdateGRB(grbList []v3.GlobalRoleBinding, isDryRun bool) {
 	}
 }
 
-func (u *AuthUtil) UpdateCRTB(crtbList []v3.ClusterRoleTemplateBinding, isDryRun bool) {
+func (u *AuthUtil) UpdateCRTB(ctx context.Context, crtbList []v3.ClusterRoleTemplateBinding, isDryRun bool) {
 	logrus.Infof("RESULT:: Will update %d crtb", len(crtbList))
 	for _, crtb := range crtbList {
 		if !isDryRun {
@@ -482,12 +478,12 @@ func (u *AuthUtil) UpdateCRTB(crtbList []v3.ClusterRoleTemplateBinding, isDryRun
 				GroupPrincipalName: crtb.GroupPrincipalName,
 				ClusterName:        crtb.ClusterName,
 			}
-			err := u.management.ClusterRoleTemplateBinding().Delete(crtb.Namespace, crtb.Name, &metav1.DeleteOptions{})
+			err := u.cli.ClusterRoleTemplateBindings.Delete(ctx, "", crtb.Name, metav1.DeleteOptions{})
 			if err != nil {
 				logrus.Errorf("failed to remove old crtb %++v with error: %v", crtb, err)
 				continue
 			}
-			_, err = u.management.ClusterRoleTemplateBinding().Create(newCRTB)
+			err = u.cli.ClusterRoleTemplateBindings.Create(ctx, "", newCRTB, nil, metav1.CreateOptions{})
 			if err != nil {
 				logrus.Errorf("failed to create new crtb %++v with error: %v", newCRTB, err)
 				continue
@@ -498,7 +494,7 @@ func (u *AuthUtil) UpdateCRTB(crtbList []v3.ClusterRoleTemplateBinding, isDryRun
 	}
 }
 
-func (u *AuthUtil) UpdatePRTB(prtbList []v3.ProjectRoleTemplateBinding, isDryRun bool) {
+func (u *AuthUtil) UpdatePRTB(ctx context.Context, prtbList []v3.ProjectRoleTemplateBinding, isDryRun bool) {
 	logrus.Infof("RESULT:: Will update %d prtb", len(prtbList))
 	for _, prtb := range prtbList {
 		if !isDryRun {
@@ -515,12 +511,12 @@ func (u *AuthUtil) UpdatePRTB(prtbList []v3.ProjectRoleTemplateBinding, isDryRun
 				ProjectName:        prtb.ProjectName,
 				ServiceAccount:     prtb.ServiceAccount,
 			}
-			err := u.management.ProjectRoleTemplateBinding().Delete(prtb.Namespace, prtb.Name, &metav1.DeleteOptions{})
+			err := u.cli.ProjectRoleTemplateBindings.Delete(ctx, prtb.Namespace, prtb.Name, metav1.DeleteOptions{})
 			if err != nil {
 				logrus.Errorf("remove old prtb %++v error: %v", prtb, err)
 				continue
 			}
-			_, err = u.management.ProjectRoleTemplateBinding().Create(newPRTB)
+			err = u.cli.ProjectRoleTemplateBindings.Create(ctx, newPRTB.Namespace, newPRTB, nil, metav1.CreateOptions{})
 			if err != nil {
 				logrus.Errorf("failed to create new prtb %++v with error: %v", prtb, err)
 				continue
@@ -531,11 +527,11 @@ func (u *AuthUtil) UpdatePRTB(prtbList []v3.ProjectRoleTemplateBinding, isDryRun
 	}
 }
 
-func (u *AuthUtil) UpdateUser(userList map[string]v3.User, isDryRun bool) {
+func (u *AuthUtil) UpdateUser(ctx context.Context, userList map[string]v3.User, isDryRun bool) {
 	logrus.Infof("RESULT:: Will update %d users", len(userList))
 	for _, user := range userList {
 		if !isDryRun {
-			_, err := u.management.User().Update(&user)
+			err := u.cli.Users.Update(ctx, "", &user, nil, metav1.UpdateOptions{})
 			if err != nil {
 				logrus.Errorf("failed to update user %s with error: %v", user.Name, err)
 				logrus.Infof("failed user is: %++v", user)
@@ -566,7 +562,7 @@ func (u *AuthUtil) prepareForNewPrincipal(principalID, userScopeType, groupScope
 		searchString = externalID
 	}
 
-	if strings.HasPrefix(principalID, fmt.Sprintf("%s", userScopeType)) {
+	if strings.HasPrefix(principalID, userScopeType) {
 		if filter == "" {
 			filter = u.userObjectFilter
 		}
@@ -591,25 +587,6 @@ func (u *AuthUtil) prepareForNewPrincipal(principalID, userScopeType, groupScope
 	return newPrincipalID, uniqueID, nil
 }
 
-func GetConfig(c *Config) (*rest.Config, error) {
-	if c.KubeConfig != "" {
-		return clientcmd.BuildConfigFromFlags("", c.KubeConfig)
-	}
-	if c.RestConfig != nil {
-		return c.RestConfig, nil
-	}
-	if config, err := rest.InClusterConfig(); err == nil {
-		if config.BearerToken == "" {
-			tokenBytes, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
-			if err == nil {
-				config.BearerToken = string(tokenBytes)
-			}
-		}
-		return config, nil
-	}
-	return nil, fmt.Errorf("failed to get kube config")
-}
-
 func GetDNAndScopeFromPrincipalID(principalID string) (string, string, error) {
 	parts := strings.SplitN(principalID, ":", 2)
 	if len(parts) != 2 {
@@ -626,34 +603,37 @@ func NewLDAPConn(servers []string, TLS, startTLS bool, port int64, connectionTim
 	var tlsConfig *tls.Config
 	ldapv3.DefaultTimeout = time.Duration(connectionTimeout) * time.Millisecond
 	// TODO implment multi-server support
-	if len(servers) != 1 {
+	if len(servers) < 1 {
 		return nil, errors.New("invalid server config. only exactly 1 server is currently supported")
 	}
-	server := servers[0]
-	tlsConfig = &tls.Config{RootCAs: caPool, InsecureSkipVerify: false, ServerName: server}
-	if TLS {
-		lConn, err = ldapv3.DialTLS("tcp", fmt.Sprintf("%s:%d", server, port), tlsConfig)
-		if err != nil {
-			return nil, fmt.Errorf("Error creating ssl connection: %v", err)
+	for _, server := range servers {
+		tlsConfig = &tls.Config{RootCAs: caPool, InsecureSkipVerify: false, ServerName: server}
+		if TLS {
+			lConn, err = ldapv3.DialTLS("tcp", fmt.Sprintf("%s:%d", server, port), tlsConfig)
+			if err != nil {
+				return nil, fmt.Errorf("ldap: error creating ssl connection: %v", err)
+			}
+		} else if startTLS {
+			lConn, err = ldapv3.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
+			if err != nil {
+				return nil, fmt.Errorf("ldap: error creating connection for startTLS: %v", err)
+			}
+			if err := lConn.StartTLS(tlsConfig); err != nil {
+				return nil, fmt.Errorf("ldap: error upgrading startTLS connection %v", err)
+			}
+		} else {
+			lConn, err = ldapv3.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
+			if err != nil {
+				return nil, fmt.Errorf("ldap: error creating connection: %v", err)
+			}
 		}
-	} else if startTLS {
-		lConn, err = ldapv3.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
-		if err != nil {
-			return nil, fmt.Errorf("Error creating connection for startTLS: %v", err)
-		}
-		if err := lConn.StartTLS(tlsConfig); err != nil {
-			return nil, fmt.Errorf("Error upgrading startTLS connection: %v", err)
-		}
-	} else {
-		lConn, err = ldapv3.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
-		if err != nil {
-			return nil, fmt.Errorf("Error creating connection: %v", err)
+		if err == nil {
+			lConn.SetTimeout(time.Duration(connectionTimeout) * time.Millisecond)
+			return lConn, nil
 		}
 	}
 
-	lConn.SetTimeout(time.Duration(connectionTimeout) * time.Millisecond)
-
-	return lConn, nil
+	return nil, err
 }
 
 func GetUserExternalID(username string, loginDomain string) string {
@@ -668,8 +648,10 @@ func GetUserExternalID(username string, loginDomain string) string {
 func GetUserSearchAttributes(config *v32.ActiveDirectoryConfig, uidAttribute string) []string {
 	userSearchAttributes := []string{
 		"memberOf",
+		config.UserObjectClass,
 		config.UserLoginAttribute,
 		config.UserNameAttribute,
+		config.UserEnabledAttribute,
 		uidAttribute}
 	return userSearchAttributes
 }
@@ -708,8 +690,9 @@ func GetGroupSearchAttributesForLDAP(config *v32.LdapConfig, uidAttribute string
 	return groupSeachAttributes
 }
 
-func GetUsersForUpdate(management managementv3.Interface, authType string) (map[string]v32.User, error) {
-	userList, err := management.User().List(metav1.ListOptions{})
+func GetUsersForUpdate(ctx context.Context, cli *client.Clients, authType string) (map[string]v32.User, error) {
+	var userList v3.UserList
+	err := cli.Users.List(ctx, "", &userList, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -737,11 +720,11 @@ func newCAPool(cert string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-func ReadFromSecret(coreClient v1.CoreV1Interface, secretInfo string, field string) (string, error) {
+func ReadFromSecret(cli *client.Clients, secretInfo string, field string) (string, error) {
 	if strings.HasPrefix(secretInfo, SecretsNamespace) {
 		split := strings.SplitN(secretInfo, ":", 2)
 		if len(split) == 2 {
-			secret, err := coreClient.Secrets(split[0]).Get(context.TODO(), split[1], metav1.GetOptions{})
+			secret, err := cli.Secrets.Get(split[0], split[1], metav1.GetOptions{})
 			if err != nil {
 				return "", fmt.Errorf("error getting secret %s %v", secretInfo, err)
 			}
@@ -857,8 +840,9 @@ func checkUniqueUser(uid, principalUID, newPrincipalID string, oldPrincipalIndex
 	return deprecateUsers
 }
 
-func getGroupPrincipal(userID, authConfigType string, management managementv3.Interface) ([]v3.Principal, error) {
-	userAttributes, err := management.UserAttribute().Get(userID, metav1.GetOptions{})
+func getGroupPrincipal(ctx context.Context, userID, authConfigType string, cli *client.Clients) ([]v3.Principal, error) {
+	var userAttributes v3.UserAttribute
+	err := cli.UserAttributes.Get(ctx, "", userID, &userAttributes, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -867,8 +851,8 @@ func getGroupPrincipal(userID, authConfigType string, management managementv3.In
 	return groupPrincipals, nil
 }
 
-func checkForGroups(userID, authConfigType string, management managementv3.Interface, results *ldapv3.SearchResult) ([]*ldapv3.Entry, error) {
-	groupPrincipals, err := getGroupPrincipal(userID, authConfigType, management)
+func checkForGroups(ctx context.Context, userID, authConfigType string, cli *client.Clients, results *ldapv3.SearchResult) ([]*ldapv3.Entry, error) {
+	groupPrincipals, err := getGroupPrincipal(ctx, userID, authConfigType, cli)
 	if err != nil {
 		return nil, err
 	}
@@ -926,4 +910,40 @@ func EscapeUUID(s string) string {
 		}
 	}
 	return buffer.String()
+}
+
+// Decode will decode to the output structure by creating a custom decoder
+// that uses the stringToK8sTimeHookFunc to handle the metav1.Time field properly.
+func Decode(input, output any) error {
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: stringToK8sTimeHookFunc(),
+		Result:     output,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to create decoder for Config: %w", err)
+	}
+	err = decoder.Decode(input)
+	if err != nil {
+		return fmt.Errorf("unable to decode Config: %w", err)
+	}
+	return nil
+}
+
+// stringToTimeHookFunc returns a DecodeHookFunc that converts strings to metav1.Time.
+func stringToK8sTimeHookFunc() mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{}) (interface{}, error) {
+		if f.Kind() != reflect.String {
+			return data, nil
+		}
+		if t != reflect.TypeOf(metav1.Time{}) {
+			return data, nil
+		}
+
+		// Convert it by parsing
+		stdTime, err := time.Parse(time.RFC3339, data.(string))
+		return metav1.Time{Time: stdTime}, err
+	}
 }

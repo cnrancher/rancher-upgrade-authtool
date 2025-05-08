@@ -5,20 +5,18 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"strings"
 
-	managementv3 "github.com/cnrancher/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
-	"github.com/mitchellh/mapstructure"
+	"github.com/cnrancher/rancher-upgrade-authtool/client"
 	v32 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	v3client "github.com/rancher/rancher/pkg/client/generated/management/v3"
+	"github.com/rancher/wrangler/v3/pkg/unstructured"
 	"github.com/sirupsen/logrus"
 	"gomodules.xyz/jsonpatch/v2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/dynamic"
-	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 type ADAuthTool struct {
@@ -34,11 +32,9 @@ func init() {
 	})
 }
 
-func (au *ADAuthTool) NewAuthTool(management managementv3.Interface, coreClient v1.CoreV1Interface, client dynamic.Interface) error {
-	au.management = management
-	au.coreClient = coreClient
-	au.client = client
-	adConfig, caPool, err := GetActiveDirectoryConfig(au.client, au.coreClient)
+func (au *ADAuthTool) NewAuthTool(cli *client.Clients) error {
+	au.cli = cli
+	adConfig, caPool, err := GetActiveDirectoryConfig(au.cli)
 	if err != nil {
 		return err
 	}
@@ -67,7 +63,7 @@ func (au *ADAuthTool) NewAuthTool(management managementv3.Interface, coreClient 
 	au.userSearchAttribute = GetUserSearchAttributes(adConfig, au.userUniqueAttribute)
 	au.groupSearchAttribute = GetGroupSearchAttributes(adConfig, au.groupUniqueAttribute)
 	username := GetUserExternalID(adConfig.ServiceAccountUsername, adConfig.DefaultLoginDomain)
-	err = lConn.Bind(username, adConfig.ServiceAccountPassword)
+	err = au.conn.Bind(username, adConfig.ServiceAccountPassword)
 	if err != nil {
 		return err
 	}
@@ -82,7 +78,7 @@ func (au *ADAuthTool) GetAllowedPrincipals() []string {
 	return au.config.AllowedPrincipalIDs
 }
 
-func (au *ADAuthTool) UpdateAllowedPrincipals(isDryRun bool) error {
+func (au *ADAuthTool) UpdateAllowedPrincipals(ctx context.Context, isDryRun bool) error {
 	newConfig := au.config.DeepCopy()
 	userScopeType := fmt.Sprintf("%s%s", ActiveDirectoryAuth, UserScope)
 	groupScopeType := fmt.Sprintf("%s%s", ActiveDirectoryAuth, GroupScope)
@@ -101,7 +97,7 @@ func (au *ADAuthTool) UpdateAllowedPrincipals(isDryRun bool) error {
 		}
 		logrus.Infof("Will update new activedirectory auth config with patches %v", patches)
 		patchBytes, _ := json.Marshal(patches)
-		_, err = au.management.AuthConfig().Patch(ActiveDirectoryAuth, types.JSONPatchType, patchBytes)
+		err = au.cli.AuthConfigs.Patch(ctx, "", ActiveDirectoryAuth, types.JSONPatchType, patchBytes, nil, metav1.PatchOptions{})
 		if err != nil {
 			return err
 		}
@@ -112,54 +108,53 @@ func (au *ADAuthTool) UpdateAllowedPrincipals(isDryRun bool) error {
 	return nil
 }
 
-func (au *ADAuthTool) UpdateUserPrincipals(list map[string]v32.User, isDryRun bool) {
-	preparedUsers := au.prepareUsers(list, ActiveDirectoryAuth)
-	au.UpdateUser(preparedUsers, isDryRun)
+func (au *ADAuthTool) UpdateUserPrincipals(ctx context.Context, list map[string]v32.User, isDryRun bool) {
+	preparedUsers := au.prepareUsers(ctx, list, ActiveDirectoryAuth)
+	au.UpdateUser(ctx, preparedUsers, isDryRun)
 }
 
-func (au *ADAuthTool) UpdatePermissionPrincipals(isDryRun bool, grbList []v32.GlobalRoleBinding, crtbList []v32.ClusterRoleTemplateBinding, prtbList []v32.ProjectRoleTemplateBinding) {
+func (au *ADAuthTool) UpdatePermissionPrincipals(ctx context.Context, isDryRun bool, grbList []v32.GlobalRoleBinding, crtbList []v32.ClusterRoleTemplateBinding, prtbList []v32.ProjectRoleTemplateBinding) {
 	groupScopeType := fmt.Sprintf("%s%s://", ActiveDirectoryAuth, GroupScope)
 	userScopeType := fmt.Sprintf("%s%s://", ActiveDirectoryAuth, UserScope)
 	preparedGRB := au.prepareGRB(grbList, groupScopeType)
-	au.UpdateGRB(preparedGRB, isDryRun)
+	au.UpdateGRB(ctx, preparedGRB, isDryRun)
 
 	preparedCRTB := au.prepareCRTB(crtbList, userScopeType, groupScopeType)
-	au.UpdateCRTB(preparedCRTB, isDryRun)
+	au.UpdateCRTB(ctx, preparedCRTB, isDryRun)
 
 	preparedPRTB := au.preparePRTB(prtbList, userScopeType, groupScopeType)
-	au.UpdatePRTB(preparedPRTB, isDryRun)
+	au.UpdatePRTB(ctx, preparedPRTB, isDryRun)
 }
 
 func (au *ADAuthTool) PrintManualCheckData() {
 	au.print()
 }
 
-func GetActiveDirectoryConfig(client dynamic.Interface, coreClient v1.CoreV1Interface) (*v32.ActiveDirectoryConfig, *x509.CertPool, error) {
-	var gvr = schema.GroupVersionResource{
-		Group:    "management.cattle.io",
-		Version:  "v3",
-		Resource: "authconfigs",
+func GetActiveDirectoryConfig(cli *client.Clients) (*v32.ActiveDirectoryConfig, *x509.CertPool, error) {
+	var gvr = schema.GroupVersionKind{
+		Group:   "management.cattle.io",
+		Version: "v3",
+		Kind:    "AuthConfig",
 	}
-	authConfigObj, err := client.Resource(gvr).Get(context.TODO(), ActiveDirectoryAuth, metav1.GetOptions{})
+	authConfigObj, err := cli.Dynamic.Get(gvr, "", ActiveDirectoryAuth)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to retrieve openldap config, error: %v", err)
+		return nil, nil, err
 	}
-	storedADConfigMap := authConfigObj.UnstructuredContent()
 
+	logrus.Infof("----- get ad config %++v", authConfigObj)
+	u, err := unstructured.ToUnstructured(authConfigObj)
+	if err != nil {
+		return nil, nil, err
+	}
+	storedADConfigMap := u.UnstructuredContent()
 	storedADConfig := &v32.ActiveDirectoryConfig{}
-	mapstructure.Decode(storedADConfigMap, storedADConfig)
-
-	metadataMap, ok := storedADConfigMap["metadata"].(map[string]interface{})
-	if !ok {
-		return nil, nil, fmt.Errorf("failed to retrieve ActiveDirectoryConfig metadata, cannot read k8s Unstructured data")
+	err = Decode(storedADConfigMap, storedADConfig)
+	if err != nil {
+		return nil, nil, err
 	}
-
-	typemeta := &metav1.ObjectMeta{}
-	mapstructure.Decode(metadataMap, typemeta)
-	storedADConfig.ObjectMeta = *typemeta
 
 	if storedADConfig.ServiceAccountPassword != "" {
-		value, err := ReadFromSecret(coreClient, storedADConfig.ServiceAccountPassword,
+		value, err := ReadFromSecret(cli, storedADConfig.ServiceAccountPassword,
 			strings.ToLower(v3client.ActiveDirectoryConfigFieldServiceAccountPassword))
 		if err != nil {
 			return nil, nil, err

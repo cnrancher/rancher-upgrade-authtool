@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -8,17 +9,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cnrancher/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io"
-	managementv3 "github.com/cnrancher/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
+	"github.com/cnrancher/rancher-upgrade-authtool/client"
 	ldapv3 "github.com/go-ldap/ldap/v3"
 	"github.com/pkg/errors"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	"github.com/sirupsen/logrus"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
-	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 type Tool func() AuthTool
@@ -47,32 +45,40 @@ func GetAuthTool(name string) AuthTool {
 }
 
 type AuthTool interface {
-	NewAuthTool(management managementv3.Interface, coreClient v1.CoreV1Interface, client dynamic.Interface) error
+	NewAuthTool(cli *client.Clients) error
 	GetAllowedPrincipals() []string
-	UpdateAllowedPrincipals(isDryRun bool) error
-	UpdateUserPrincipals(list map[string]v3.User, isDryRun bool)
-	UpdatePermissionPrincipals(isDryRun bool, grbList []v3.GlobalRoleBinding, crtbList []v3.ClusterRoleTemplateBinding, prtbList []v3.ProjectRoleTemplateBinding)
+	UpdateAllowedPrincipals(ctx context.Context, isDryRun bool) error
+	UpdateUserPrincipals(ctx context.Context, list map[string]v3.User, isDryRun bool)
+	UpdatePermissionPrincipals(ctx context.Context, isDryRun bool, grbList []v3.GlobalRoleBinding, crtbList []v3.ClusterRoleTemplateBinding, prtbList []v3.ProjectRoleTemplateBinding)
 	PrintManualCheckData()
 	DestroyAuthTool()
 }
 
-func Upgrade(c *Config) error {
-	cfg, err := GetConfig(c)
+func Upgrade(ctx context.Context, c *Config) error {
+	restConfig, err := clientcmd.BuildConfigFromFlags("", c.KubeConfig)
 	if err != nil {
 		return err
 	}
-	mgmt, err := management.NewFactoryFromConfig(cfg)
+	cl, err := client.New(ctx, restConfig)
 	if err != nil {
 		return err
 	}
-	k8sClient, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return err
-	}
-	client, err := dynamic.NewForConfig(cfg)
-	if err != nil {
-		return err
-	}
+	//cfg, err := GetConfig(c)
+	//if err != nil {
+	//	return err
+	//}
+	//mgmt, err := management.NewFactoryFromConfig(cfg)
+	//if err != nil {
+	//	return err
+	//}
+	//k8sClient, err := kubernetes.NewForConfig(cfg)
+	//if err != nil {
+	//	return err
+	//}
+	//client, err := dynamic.NewForConfig(cfg)
+	//if err != nil {
+	//	return err
+	//}
 
 	if c.LogFilePath != "" {
 		logFile, err := os.OpenFile(c.LogFilePath, os.O_CREATE|os.O_WRONLY, 0644)
@@ -83,8 +89,8 @@ func Upgrade(c *Config) error {
 		logrus.SetOutput(mw)
 	}
 	tool := GetAuthTool(c.AuthConfigType)
-	mgmtInterface := mgmt.Management().V3()
-	if err := tool.NewAuthTool(mgmtInterface, k8sClient.CoreV1(), client); err != nil {
+	//mgmtInterface := mgmt.Management().V3()
+	if err := tool.NewAuthTool(cl); err != nil {
 		return err
 	}
 	defer tool.DestroyAuthTool()
@@ -95,13 +101,13 @@ func Upgrade(c *Config) error {
 	// prepare for auth config allowed principal id update
 	if len(allowedPrincipals) > 0 {
 		logrus.Println("Step 1.1 Prepare for new allowed principals...")
-		if err := tool.UpdateAllowedPrincipals(c.IsDryRun); err != nil {
+		if err := tool.UpdateAllowedPrincipals(ctx, c.IsDryRun); err != nil {
 			return err
 		}
 	}
 	logrus.Println("Step 2. Get User list")
 	userScopeType := fmt.Sprintf("%s%s://", c.AuthConfigType, UserScope)
-	beforeUpdate, err := GetUsersForUpdate(mgmtInterface, userScopeType)
+	beforeUpdate, err := GetUsersForUpdate(ctx, cl, userScopeType)
 	if err != nil {
 		return fmt.Errorf("failed to get user list: %v", err)
 	}
@@ -115,7 +121,8 @@ func Upgrade(c *Config) error {
 
 	logrus.Println("Step 3. Prepare user/groups for new principalID")
 	groupScopeType := fmt.Sprintf("%s%s://", c.AuthConfigType, GroupScope)
-	grbList, err := mgmtInterface.GlobalRoleBinding().List(metav1.ListOptions{})
+	var grbList v3.GlobalRoleBindingList
+	err = cl.GlobalRoleBindings.List(ctx, "", &grbList, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -127,7 +134,8 @@ func Upgrade(c *Config) error {
 	}
 	logrus.Infof("find %d global role bindings to update for group principal", len(beforeUpdateGRB))
 
-	crtbList, err := mgmtInterface.ClusterRoleTemplateBinding().List("", metav1.ListOptions{})
+	var crtbList v3.ClusterRoleTemplateBindingList
+	err = cl.ClusterRoleTemplateBindings.List(ctx, "", &crtbList, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -141,7 +149,8 @@ func Upgrade(c *Config) error {
 	}
 	logrus.Infof("find %d crtb need to update", len(beforeUpdateCRTB))
 
-	prtbList, err := mgmtInterface.ProjectRoleTemplateBinding().List("", metav1.ListOptions{})
+	var prtbList v3.ProjectRoleTemplateBindingList
+	err = cl.ProjectRoleTemplateBindings.List(ctx, "", &prtbList, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -156,10 +165,10 @@ func Upgrade(c *Config) error {
 	logrus.Infof("find %d prtb need to update", len(beforeUpdatePRTB))
 
 	logrus.Println("Step 4. Sync cluster permission with unique attribute id")
-	tool.UpdatePermissionPrincipals(c.IsDryRun, beforeUpdateGRB, beforeUpdateCRTB, beforeUpdatePRTB)
+	tool.UpdatePermissionPrincipals(ctx, c.IsDryRun, beforeUpdateGRB, beforeUpdateCRTB, beforeUpdatePRTB)
 
 	logrus.Println("Step 5. Sync user with unique attribute id")
-	tool.UpdateUserPrincipals(beforeUpdate, c.IsDryRun)
+	tool.UpdateUserPrincipals(ctx, beforeUpdate, c.IsDryRun)
 
 	logrus.Println("Step 6. Manual check data")
 	tool.PrintManualCheckData()
