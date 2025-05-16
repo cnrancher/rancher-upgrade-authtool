@@ -19,6 +19,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
 	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
@@ -444,7 +445,6 @@ func (u *AuthUtil) UpdateGRB(grbList []v3.GlobalRoleBinding, isDryRun bool) {
 			newGrb := &v3.GlobalRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: grb.GenerateName,
-					Name:         grb.Name,
 				},
 				UserName:           grb.UserName,
 				GroupPrincipalName: grb.GroupPrincipalName,
@@ -474,7 +474,6 @@ func (u *AuthUtil) UpdateCRTB(crtbList []v3.ClusterRoleTemplateBinding, isDryRun
 			newCRTB := &v3.ClusterRoleTemplateBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: crtb.GenerateName,
-					Name:         crtb.Name,
 					Namespace:    crtb.Namespace,
 				},
 				RoleTemplateName:   crtb.RoleTemplateName,
@@ -487,6 +486,21 @@ func (u *AuthUtil) UpdateCRTB(crtbList []v3.ClusterRoleTemplateBinding, isDryRun
 			err := u.management.ClusterRoleTemplateBinding().Delete(crtb.Namespace, crtb.Name, &metav1.DeleteOptions{})
 			if err != nil {
 				logrus.Errorf("failed to remove old crtb %++v with error: %v", crtb, err)
+				continue
+			}
+			
+			if crtb.GenerateName == "" {
+				newCRTB.Name = crtb.Name
+			}
+			err = u.waitForResource(func() (done bool, err error) {
+				_, err = u.management.ClusterRoleTemplateBinding().Get(crtb.Namespace, crtb.Name, metav1.GetOptions{})
+				if err != nil && apierrors.IsNotFound(err) {
+					return true, nil
+				}
+				return false, nil
+			})
+			if err != nil {
+				logrus.Errorf("failed to wait for crtb %++v remove: error: %v", crtb, err)
 				continue
 			}
 			_, err = u.management.ClusterRoleTemplateBinding().Create(newCRTB)
@@ -507,7 +521,6 @@ func (u *AuthUtil) UpdatePRTB(prtbList []v3.ProjectRoleTemplateBinding, isDryRun
 			newPRTB := &v3.ProjectRoleTemplateBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: prtb.GenerateName,
-					Name:         prtb.Name,
 					Namespace:    prtb.Namespace,
 				},
 				RoleTemplateName:   prtb.RoleTemplateName,
@@ -521,6 +534,20 @@ func (u *AuthUtil) UpdatePRTB(prtbList []v3.ProjectRoleTemplateBinding, isDryRun
 			err := u.management.ProjectRoleTemplateBinding().Delete(prtb.Namespace, prtb.Name, &metav1.DeleteOptions{})
 			if err != nil {
 				logrus.Errorf("remove old prtb %++v error: %v", prtb, err)
+				continue
+			}
+			if prtb.GenerateName == "" {
+				newPRTB.Name = prtb.Name
+			}
+			err = u.waitForResource(func() (done bool, err error) {
+				_, err = u.management.ProjectRoleTemplateBinding().Get(prtb.Namespace, prtb.Name, metav1.GetOptions{})
+				if err != nil && apierrors.IsNotFound(err) {
+					return true, nil
+				}
+				return false, nil
+			})
+			if err != nil {
+				logrus.Errorf("failed to wait for prtb %++v remove: error: %v", prtb, err)
 				continue
 			}
 			_, err = u.management.ProjectRoleTemplateBinding().Create(newPRTB)
@@ -592,6 +619,16 @@ func (u *AuthUtil) prepareForNewPrincipal(principalID, userScopeType, groupScope
 	_, newPrincipalID, uniqueID := getUniqueAttribute(entry, scopeType, scope, uniqueAttribute)
 	logrus.Infof("Old user allowedPrincipal %s will be replaced with new uniqueID: %s", principalID, uniqueID)
 	return newPrincipalID, uniqueID, nil
+}
+
+func (u *AuthUtil) waitForResource(waitFunc wait.ConditionFunc) error {
+	backoff := wait.Backoff{
+		Duration: 10 * time.Second,
+		Factor:   1,
+		Jitter:   0,
+		Steps:    7,
+	}
+	return wait.ExponentialBackoff(backoff, waitFunc)
 }
 
 func GetConfig(c *Config) (*rest.Config, error) {
