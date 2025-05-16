@@ -444,6 +444,7 @@ func (u *AuthUtil) UpdateGRB(grbList []v3.GlobalRoleBinding, isDryRun bool) {
 			newGrb := &v3.GlobalRoleBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: grb.GenerateName,
+					Name:         grb.Name,
 				},
 				UserName:           grb.UserName,
 				GroupPrincipalName: grb.GroupPrincipalName,
@@ -473,6 +474,7 @@ func (u *AuthUtil) UpdateCRTB(crtbList []v3.ClusterRoleTemplateBinding, isDryRun
 			newCRTB := &v3.ClusterRoleTemplateBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: crtb.GenerateName,
+					Name:         crtb.Name,
 					Namespace:    crtb.Namespace,
 				},
 				RoleTemplateName:   crtb.RoleTemplateName,
@@ -505,6 +507,7 @@ func (u *AuthUtil) UpdatePRTB(prtbList []v3.ProjectRoleTemplateBinding, isDryRun
 			newPRTB := &v3.ProjectRoleTemplateBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: prtb.GenerateName,
+					Name:         prtb.Name,
 					Namespace:    prtb.Namespace,
 				},
 				RoleTemplateName:   prtb.RoleTemplateName,
