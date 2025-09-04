@@ -1258,6 +1258,7 @@ honnef.co/go/tools v0.0.1-2020.1.3/go.mod h1:X/FiERA/W4tHapMX5mGpAtMSVEeEUOyHaw9
 honnef.co/go/tools v0.0.1-2020.1.4/go.mod h1:X/FiERA/W4tHapMX5mGpAtMSVEeEUOyHaw9vFzvIQ3k=
 k8s.io/api v0.25.11 h1:4mjYDfE3yp22jrytjH0knwgzjXKkxHX4D01ZCAazvZM=
 k8s.io/api v0.25.11/go.mod h1:bK4UvD4bthtutNlvensrfBX21PRQ/vs2cIYggHkOOAo=
+k8s.io/apiextensions-apiserver v0.25.11 h1:qZY0kCt0tW3QHPKcogp3k4zrlZhe9f8H6EJOr7sNRbA=
 k8s.io/apiextensions-apiserver v0.25.11/go.mod h1:wsXndE5H00YrPUF/H6KuuNwW2VyYKnKsh8/R9eq4KMs=
 k8s.io/apimachinery v0.25.11 h1:2EhfdrSAMvBxsswvOGCEymKk4ZnHZkranuZqdR0rsO4=
 k8s.io/apimachinery v0.25.11/go.mod h1:IFwbcNi3gKkfDhuy0VYu3+BwbxbiIov3p6FR8ge1Epc=
@@ -1275,6 +1276,7 @@ k8s.io/gengo v0.0.0-20211129171323-c02415ce4185/go.mod h1:FiNAH4ZV3gBg2Kwh89tzAE
 k8s.io/gengo v0.0.0-20220902162205-c0856e24416d h1:U9tB195lKdzwqicbJvyJeOXV7Klv+wNAWENRnXEGi08=
 k8s.io/gengo v0.0.0-20220902162205-c0856e24416d/go.mod h1:FiNAH4ZV3gBg2Kwh89tzAEV2be7d5xI0vBa/VySYy3E=
 k8s.io/klog v0.3.0/go.mod h1:Gq+BEi5rUBO/HRz0bTSXDUcqjScdoY3a9IHpCEIOOfk=
+k8s.io/klog v1.0.0 h1:Pt+yjF5aB1xDSVbau4VsWe+dQNzA0qv1LlXdC2dF6Q8=
 k8s.io/klog v1.0.0/go.mod h1:4Bi6QPql/J/LkTDqv7R/cd3hPo4k2DG6Ptcz060Ez5I=
 k8s.io/klog/v2 v2.0.0/go.mod h1:PBfzABfn139FHAV07az/IF9Wp1bkk3vpT2XSJ76fSDE=
 k8s.io/klog/v2 v2.2.0/go.mod h1:Od+F08eJP+W3HUb4pSrPpgp9DGU4GzlpG/TmITuYh/Y=
@@ -1282,6 +1284,7 @@ k8s.io/klog/v2 v2.10.0/go.mod h1:hy9LJ/NvuK+iVyP4Ehqva4HxZG/oXyIS3n3Jmire4Ec=
 k8s.io/klog/v2 v2.70.1/go.mod h1:y1WjHnz7Dj687irZUWR/WLkLc5N1YHtjLdmgWjndZn0=
 k8s.io/klog/v2 v2.90.1 h1:m4bYOKall2MmOiRaR1J+We67Do7vm9KiQVlT96lnHUw=
 k8s.io/klog/v2 v2.90.1/go.mod h1:y1WjHnz7Dj687irZUWR/WLkLc5N1YHtjLdmgWjndZn0=
+k8s.io/kube-aggregator v0.25.11 h1:+5krAQmBM1sGsypJ0KMyn8LiKVE4sqV1PO//sratM88=
 k8s.io/kube-aggregator v0.25.11/go.mod h1:rLwE4Qd8OPNJXYAU78NuWKL7WOz+99SOPi+Q4Yi6Ulg=
 k8s.io/kube-openapi v0.0.0-20210421082810-95288971da7e/go.mod h1:vHXdDvt9+2spS2Rx9ql3I8tycm3H9FDfdUoIuKCefvw=
 k8s.io/kube-openapi v0.0.0-20220401212409-b28bf2818661/go.mod h1:daOouuuwd9JXpv1L7Y34iV3yf6nxzipkKMWWlqlvK9M=

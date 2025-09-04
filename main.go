@@ -13,20 +13,27 @@ import (
 func main() {
 	var config tool.Config
 	app := cli.NewApp()
-	app.Name = "Sync AD/LDAP auth config for rancher users"
+	app.Name = "rancher user rbac checker"
 	app.Version = "v1.0.0"
 	app.Commands = []cli.Command{
+		//{
+		//	Name:    "upgrade",
+		//	Aliases: []string{"u"},
+		//	Usage:   "upgrade rancher user to new version",
+		//	Action: func(c *cli.Context) error {
+		//		if config.AuthType == "0" {
+		//			config.AuthConfigType = tool.ActiveDirectoryAuth
+		//		} else if config.AuthType == "1" {
+		//			config.AuthConfigType = tool.OpenLDAPAuth
+		//		}
+		//		return tool.Upgrade(&config)
+		//	},
+		//},
 		{
-			Name:    "upgrade",
-			Aliases: []string{"u"},
-			Usage:   "upgrade rancher user to new version",
+			Name:  "checker",
+			Usage: "check rancher user rbac",
 			Action: func(c *cli.Context) error {
-				if config.AuthType == "0" {
-					config.AuthConfigType = tool.ActiveDirectoryAuth
-				} else if config.AuthType == "1" {
-					config.AuthConfigType = tool.OpenLDAPAuth
-				}
-				return tool.Upgrade(&config)
+				return tool.Checker(&config)
 			},
 		},
 	}
@@ -44,16 +51,16 @@ func main() {
 			EnvVar:      "KUBECONFIG",
 		},
 		cli.StringFlag{
-			Name:        "auth-type",
-			Usage:       "auth type: 0 - AD auth, 1 - openldap auth",
-			Required:    true,
-			Destination: &config.AuthType,
+			Name:        "targetClusterConfig",
+			Usage:       "kubeconfig for accessing target downstream cluster",
+			Destination: &config.TargetClusterConfig,
+			EnvVar:      "TARGET_CLUSTER_CONFIG",
 		},
 		cli.StringFlag{
-			Name:        "log-file",
-			Usage:       "log file path for upgrade",
-			Required:    false,
-			Destination: &config.LogFilePath,
+			Name:        "cluster",
+			Usage:       "target downstream cluster id(get from Rancher)",
+			Destination: &config.Cluster,
+			EnvVar:      "CLUSTER",
 		},
 	}
 

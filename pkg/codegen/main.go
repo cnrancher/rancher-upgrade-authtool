@@ -23,6 +23,7 @@ func main() {
 					v3.GlobalRoleBinding{},
 					v3.ClusterRoleTemplateBinding{},
 					v3.ProjectRoleTemplateBinding{},
+					v3.Project{},
 				},
 			},
 		},

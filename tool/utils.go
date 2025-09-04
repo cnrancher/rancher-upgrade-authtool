@@ -38,12 +38,14 @@ const (
 )
 
 type Config struct {
-	RestConfig     *rest.Config
-	KubeConfig     string
-	AuthType       string
-	AuthConfigType string
-	IsDryRun       bool
-	LogFilePath    string
+	RestConfig          *rest.Config
+	KubeConfig          string
+	AuthType            string
+	AuthConfigType      string
+	IsDryRun            bool
+	LogFilePath         string
+	TargetClusterConfig string
+	Cluster             string
 }
 
 type AuthUtil struct {

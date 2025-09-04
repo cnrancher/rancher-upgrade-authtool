@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ type Interface interface {
 	Cluster() ClusterController
 	ClusterRoleTemplateBinding() ClusterRoleTemplateBindingController
 	GlobalRoleBinding() GlobalRoleBindingController
+	Project() ProjectController
 	ProjectRoleTemplateBinding() ProjectRoleTemplateBindingController
 	User() UserController
 	UserAttribute() UserAttributeController
@@ -59,6 +60,9 @@ func (c *version) ClusterRoleTemplateBinding() ClusterRoleTemplateBindingControl
 }
 func (c *version) GlobalRoleBinding() GlobalRoleBindingController {
 	return NewGlobalRoleBindingController(schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "GlobalRoleBinding"}, "globalrolebindings", false, c.controllerFactory)
+}
+func (c *version) Project() ProjectController {
+	return NewProjectController(schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "Project"}, "projects", true, c.controllerFactory)
 }
 func (c *version) ProjectRoleTemplateBinding() ProjectRoleTemplateBindingController {
 	return NewProjectRoleTemplateBindingController(schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "ProjectRoleTemplateBinding"}, "projectroletemplatebindings", true, c.controllerFactory)
