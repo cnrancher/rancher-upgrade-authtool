@@ -91,10 +91,20 @@ func Checker(c *Config) error {
 		return err
 	}
 
+	filterRBs := []v1.RoleBinding{}
+	for _, rb := range rbs.Items {
+		// skip for helm-operation bindings
+		if strings.HasPrefix(rb.Name, "helm-operation") {
+			logrus.Infof("skip for helm-operation rolebindings for namespace=%s, name=%s", rb.Namespace, rb.Name)
+			continue
+		}
+		filterRBs = append(filterRBs, rb)
+	}
+
 	// check user rbac
 	for _, user := range users {
 		logrus.Infof("check rbac for user %s: %v", user.Name, user.PrincipalIDs)
-		err = client.checkPermission(user, crtb.Items, prtbList, crbs.Items, rbs.Items)
+		err = client.checkPermission(user, crtb.Items, prtbList, crbs.Items, filterRBs)
 		if err != nil {
 			logrus.Errorf("failed to check permission for user %s: %v", user.Name, err)
 			continue
