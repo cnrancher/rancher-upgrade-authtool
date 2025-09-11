@@ -31,7 +31,6 @@ func init() {
 
 type Interface interface {
 	AuthConfig() AuthConfigController
-	Cluster() ClusterController
 	ClusterRoleTemplateBinding() ClusterRoleTemplateBindingController
 	GlobalRoleBinding() GlobalRoleBindingController
 	ProjectRoleTemplateBinding() ProjectRoleTemplateBindingController
@@ -51,10 +50,6 @@ type version struct {
 
 func (v *version) AuthConfig() AuthConfigController {
 	return generic.NewNonNamespacedController[*v3.AuthConfig, *v3.AuthConfigList](schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "AuthConfig"}, "authconfigs", v.controllerFactory)
-}
-
-func (v *version) Cluster() ClusterController {
-	return generic.NewNonNamespacedController[*v3.Cluster, *v3.ClusterList](schema.GroupVersionKind{Group: "management.cattle.io", Version: "v3", Kind: "Cluster"}, "clusters", v.controllerFactory)
 }
 
 func (v *version) ClusterRoleTemplateBinding() ClusterRoleTemplateBindingController {

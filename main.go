@@ -31,10 +31,13 @@ func main() {
 			Aliases: []string{"u"},
 			Usage:   "upgrade rancher user to new version",
 			Action: func(c *cli.Context) error {
-				if config.AuthType == "0" {
+				switch config.AuthType {
+				case "0":
 					config.AuthConfigType = tool.ActiveDirectoryAuth
-				} else if config.AuthType == "1" {
+				case "1":
 					config.AuthConfigType = tool.OpenLDAPAuth
+				default:
+					return fmt.Errorf("invalid auth type parameter %s, only support 0 for ad, 1 for openldap", config.AuthType)
 				}
 				return tool.Upgrade(&config)
 			},

@@ -22,7 +22,6 @@ func main() {
 			"management.cattle.io": {
 				PackageName: "management.cattle.io",
 				Types: []interface{}{
-					v3.Cluster{},
 					v3.AuthConfig{},
 					v3.User{},
 					v3.UserAttribute{},
