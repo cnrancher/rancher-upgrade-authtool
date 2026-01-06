@@ -6,7 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -640,7 +640,7 @@ func GetConfig(c *Config) (*rest.Config, error) {
 	}
 	if config, err := rest.InClusterConfig(); err == nil {
 		if config.BearerToken == "" {
-			tokenBytes, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+			tokenBytes, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
 			if err == nil {
 				config.BearerToken = string(tokenBytes)
 			}

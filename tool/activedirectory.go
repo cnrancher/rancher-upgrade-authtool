@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"strings"
 
 	managementv3 "github.com/cnrancher/rancher-upgrade-authtool/pkg/generated/controllers/management.cattle.io/v3"
@@ -14,8 +13,8 @@ import (
 	v3client "github.com/rancher/rancher/pkg/client/generated/management/v3"
 	"github.com/sirupsen/logrus"
 	"gomodules.xyz/jsonpatch/v2"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
