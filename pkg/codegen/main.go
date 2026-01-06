@@ -21,7 +21,7 @@ func main() {
 		Groups: map[string]args.Group{
 			"management.cattle.io": {
 				PackageName: "management.cattle.io",
-				Types: []interface{}{
+				Types: []any{
 					v3.AuthConfig{},
 					v3.User{},
 					v3.UserAttribute{},
