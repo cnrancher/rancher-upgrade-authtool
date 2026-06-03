@@ -488,7 +488,7 @@ func (u *AuthUtil) UpdateCRTB(crtbList []v3.ClusterRoleTemplateBinding, isDryRun
 				logrus.Errorf("failed to remove old crtb %++v with error: %v", crtb, err)
 				continue
 			}
-			
+
 			if crtb.GenerateName == "" {
 				newCRTB.Name = crtb.Name
 			}
